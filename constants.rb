@@ -7,23 +7,31 @@ module SonVu
   module CNCPlugins
     PLUGIN_ID = 'sonvu_cnc_plugins' unless const_defined?(:PLUGIN_ID, false)
     PLUGIN_NAME = 'SonVu CNC Plugins' unless const_defined?(:PLUGIN_NAME, false)
-    MENU_DOGBONE_JOINERY = 'Dogbone Joinery'
-    MENU_OPEN = 'Open'
+    MENU_DOGBONE_JOINERY = 'Mộng CNC'
+    MENU_OPEN = 'Tạo mộng xương chó'
+    MENU_DELETE_GENERATED_TEMPLATES = 'Xóa mẫu mộng đã tạo'
+    TOOLBAR_DOGBONE_JOINERY = 'Mộng CNC'
+    COMMAND_CREATE_DOGBONE_JOINT = 'Tạo mộng xương chó'
+    COMMAND_CREATE_DOGBONE_MORTISE = 'Tạo mộng âm'
+    COMMAND_CREATE_DOGBONE_TENON = 'Tạo mộng dương'
+    COMMAND_DELETE_GENERATED_TEMPLATES = 'Xóa mẫu mộng đã tạo'
+    ATTRIBUTE_DICTIONARY = 'SonVu_CNC_Plugins'
+    GENERATED_GROUP_ATTRIBUTE = 'generated_group'
     COMMON_CUTTER_DIAMETERS_MM = [3, 4, 6, 8].freeze
     COMMON_BOARD_THICKNESS_MM = [17, 18, 25].freeze
     DOGBONE_PRESETS = {
-      'Custom' => {},
-      'MDF 17mm / cutter 6mm' => {
+      'Tùy chỉnh' => {},
+      'MDF 17mm / dao 6mm' => {
         mortise_depth_mm: 17,
         tenon_length_mm: 17,
         cutter_diameter_mm: 6
       },
-      'MDF 18mm / cutter 6mm' => {
+      'MDF 18mm / dao 6mm' => {
         mortise_depth_mm: 18,
         tenon_length_mm: 18,
         cutter_diameter_mm: 6
       },
-      'Plywood 18mm / cutter 4mm' => {
+      'Ván ép 18mm / dao 4mm' => {
         mortise_depth_mm: 18,
         tenon_length_mm: 18,
         cutter_diameter_mm: 4

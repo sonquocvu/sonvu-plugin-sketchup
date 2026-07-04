@@ -7,12 +7,13 @@ module SonVu
   module CNCPlugins
     module DogboneJoinery
       class PlacementTool
-        STATUS_TEXT = 'Click a point to place the dog-bone joint.'
+        STATUS_TEXT = 'Bấm một điểm để đặt mộng xương chó.'
         VK_ESCAPE = 27
 
-        def initialize(params, placement_face = nil)
+        def initialize(params, placement_face = nil, cut_target = nil)
           @params = params
           @placement_face = placement_face
+          @cut_target = cut_target
           @input_point = Sketchup::InputPoint.new
         end
 
@@ -33,14 +34,23 @@ module SonVu
           @input_point.pick(view, x, y)
           return unless @input_point.valid?
 
-          DogboneJoinery::Geometry.create_templates(
-            @params,
-            origin: placement_origin(@input_point.position),
-            transformation: placement_transformation(@input_point.position)
-          )
+          if @cut_target
+            DogboneJoinery::Geometry.cut_mortise_into_solid(
+              @cut_target,
+              @params,
+              origin: placement_origin(@input_point.position),
+              transformation: placement_transformation(@input_point.position)
+            )
+          else
+            DogboneJoinery::Geometry.create_templates(
+              @params,
+              origin: placement_origin(@input_point.position),
+              transformation: placement_transformation(@input_point.position)
+            )
+          end
           view.model.select_tool(nil)
         rescue StandardError => e
-          CNCPlugins::UIHelpers.message("Unable to place Dogbone templates:\n#{e.message}")
+          CNCPlugins::UIHelpers.message("#{failure_message}:\n#{e.message}")
           view.model.select_tool(nil)
         end
 
@@ -53,6 +63,10 @@ module SonVu
         end
 
         private
+
+        def failure_message
+          @cut_target ? 'Không cắt được mộng âm xương chó' : 'Không đặt được mẫu mộng xương chó'
+        end
 
         def placement_origin(point)
           return face_local_origin if @placement_face
@@ -67,16 +81,17 @@ module SonVu
           # Template geometry is authored in local coordinates where X is width,
           # Y is height, and Z is mortise depth. For face placement we build a
           # local coordinate frame at the clicked point projected onto the
-          # selected face plane. Local Z follows the selected face normal, local
-          # X follows an edge direction on that face, and local Y is the cross
-          # product that completes the plane basis.
+          # selected face plane. Local Z follows the selected face normal for
+          # mortises. For tenon-only placement, local Z is corrected to point
+          # away from the connected model bounds so the tab protrudes outward.
+          # Local X follows an edge direction on that face, and local Y is the
+          # cross product that completes the plane basis.
           #
           # The geometry is generated around a local origin before this
           # transform is applied. For face placement, face_local_origin offsets
           # the template by half the mortise width/height, so the clicked point
           # lands at the center of the mortise rectangle rather than at a corner.
-          zaxis = @placement_face.normal
-          zaxis.normalize!
+          zaxis = placement_zaxis
 
           xaxis = face_xaxis(zaxis)
           yaxis = zaxis * xaxis
@@ -85,12 +100,74 @@ module SonVu
           Geom::Transformation.axes(project_point_to_face(point), xaxis, yaxis, zaxis)
         end
 
+        def placement_zaxis
+          normal = Geom::Vector3d.new(@placement_face.normal.x, @placement_face.normal.y, @placement_face.normal.z)
+          normal.normalize!
+          return normal unless tenon_only_template?
+
+          outward_normal(normal)
+        end
+
+        def outward_normal(normal)
+          face_center = selected_face_center
+          bounds_center = connected_geometry_bounds_center
+          return normal unless face_center && bounds_center
+
+          outward_vector = face_center - bounds_center
+          return normal if outward_vector.length <= 0.001
+
+          outward_vector.normalize!
+          vector_dot(normal, outward_vector).negative? ? reversed_vector(normal) : normal
+        end
+
+        def selected_face_center
+          vertices = @placement_face.vertices
+          return nil if vertices.empty?
+
+          x = vertices.sum { |vertex| vertex.position.x } / vertices.length.to_f
+          y = vertices.sum { |vertex| vertex.position.y } / vertices.length.to_f
+          z = vertices.sum { |vertex| vertex.position.z } / vertices.length.to_f
+          Geom::Point3d.new(x, y, z)
+        end
+
+        def connected_geometry_bounds_center
+          bounds = Geom::BoundingBox.new
+          @placement_face.all_connected.each do |entity|
+            next unless entity.respond_to?(:bounds)
+
+            entity_bounds = entity.bounds
+            bounds.add(entity_bounds.min)
+            bounds.add(entity_bounds.max)
+          end
+          bounds.valid? ? bounds.center : nil
+        end
+
+        def vector_dot(first, second)
+          (first.x * second.x) + (first.y * second.y) + (first.z * second.z)
+        end
+
+        def reversed_vector(vector)
+          Geom::Vector3d.new(-vector.x, -vector.y, -vector.z)
+        end
+
         def face_local_origin
+          if tenon_only_template?
+            return Geom::Point3d.new(
+              -(@params.fetch(:tenon_width) / 2.0),
+              -(@params.fetch(:tenon_height) / 2.0),
+              0
+            )
+          end
+
           Geom::Point3d.new(
             -(@params.fetch(:mortise_width) / 2.0),
             -(@params.fetch(:mortise_height) / 2.0),
             0
           )
+        end
+
+        def tenon_only_template?
+          @params[:create_tenon] && !@params[:create_mortise] && !@cut_target
         end
 
         def project_point_to_face(point)

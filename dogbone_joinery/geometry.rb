@@ -9,31 +9,39 @@ module SonVu
       module Geometry
         MORTISE_GROUP_NAME = 'Dogbone_Mortise_Template'
         MORTISE_PROFILE_GROUP_NAME = 'Dogbone_Mortise_2D_Profile'
+        MORTISE_CUTTER_GROUP_NAME = 'Dogbone_Mortise_Cutter'
         TENON_GROUP_NAME = 'Dogbone_Tenon_Template'
         LABELS_GROUP_NAME = 'Dogbone_Joint_Labels'
-        MORTISE_MATERIAL_NAME = 'SonVu CNC Mortise Template Red'
-        TENON_MATERIAL_NAME = 'SonVu CNC Tenon Template Green'
+        MORTISE_MATERIAL_NAME = 'SonVu CNC Mộng âm màu đỏ'
+        TENON_MATERIAL_NAME = 'SonVu CNC Mộng dương màu xanh'
         TEMPLATE_GAP_MM = 10
         LABEL_GAP_MM = 8
         LABEL_LINE_SPACING_MM = 5
         DOGBONE_ARC_SEGMENTS = 24
         DIAGONAL_CENTER_OFFSET_FACTOR = 0.5
         TBONE_CENTER_OFFSET_FACTOR = 0.65
-        DOGBONE_STYLE_DIAGONAL = 'Diagonal'
-        DOGBONE_STYLE_HORIZONTAL_TBONE = 'Horizontal T-bone'
-        DOGBONE_STYLE_VERTICAL_TBONE = 'Vertical T-bone'
+        DOGBONE_STYLE_DIAGONAL = 'Chéo'
+        DOGBONE_STYLE_HORIZONTAL_TBONE = 'Ngang (T-bone)'
+        DOGBONE_STYLE_VERTICAL_TBONE = 'Dọc (T-bone)'
+        GENERATED_GROUP_NAMES = [
+          MORTISE_GROUP_NAME,
+          TENON_GROUP_NAME,
+          LABELS_GROUP_NAME,
+          MORTISE_PROFILE_GROUP_NAME
+        ].freeze
 
         module_function
 
         def create_templates(params, origin: Geom::Point3d.new(0, 0, 0), transformation: nil)
           model = Sketchup.active_model
-          model.start_operation('Create Dogbone Joinery Templates', true)
+          model.start_operation('Tạo mẫu mộng xương chó', true)
 
           begin
             groups = []
             groups << create_mortise_template(params, origin: origin) if params[:create_mortise]
             groups << create_tenon_template(params, origin: origin) if params[:create_tenon]
             groups << create_labels(params, origin: origin) if params[:add_labels]
+            groups.each { |group| mark_generated_group(group) }
             groups.each { |group| group.transform!(transformation) } if transformation
 
             model.commit_operation
@@ -51,6 +59,65 @@ module SonVu
           points = translate_points(points_for_dogbone_mortise_profile(params), origin)
           add_polyline_face(group.entities, points)
 
+          mark_generated_group(group)
+          group
+        end
+
+        def cut_mortise_into_solid(target, params, origin: Geom::Point3d.new(0, 0, 0), transformation: nil)
+          model = Sketchup.active_model
+          model.start_operation('Cắt mộng âm xương chó vào khối', true)
+
+          begin
+            backup = create_cut_backup(target)
+            cutter = create_mortise_cutter(params, origin: origin)
+            cutter.transform!(transformation) if transformation
+
+            result = target.subtract(cutter)
+            raise 'SketchUp không cắt được khối. Vui lòng kiểm tra khối có phải solid hợp lệ không.' unless result && result.valid?
+
+            cutter.erase! if cutter.valid?
+            target.erase! if target.valid? && target != result
+            name_boolean_result(result)
+
+            model.commit_operation
+            result
+          rescue StandardError
+            model.abort_operation
+            raise
+          end
+        end
+
+        def create_cut_backup(target)
+          backup = target.copy
+          backup.name = backup_name(target)
+          move_backup_aside(backup, target)
+          backup
+        end
+
+        def move_backup_aside(backup, target)
+          bounds = target.bounds
+          offset = [bounds.width, bounds.height, bounds.depth].max + template_gap
+          backup.transform!(Geom::Transformation.translation([offset, 0, 0]))
+        end
+
+        def backup_name(target)
+          base_name = target.name.to_s.strip
+          base_name = 'Khoi_Da_Chon' if base_name.empty?
+          "Dogbone_Backup_#{base_name}"
+        end
+
+        def name_boolean_result(result)
+          result.name = 'Dogbone_Cut_Result' if result.respond_to?(:name=)
+        end
+
+        def generated_group?(entity)
+          entity.is_a?(Sketchup::Group) &&
+            GENERATED_GROUP_NAMES.include?(entity.name) &&
+            entity.get_attribute(CNCPlugins::ATTRIBUTE_DICTIONARY, CNCPlugins::GENERATED_GROUP_ATTRIBUTE) == true
+        end
+
+        def mark_generated_group(group)
+          group.set_attribute(CNCPlugins::ATTRIBUTE_DICTIONARY, CNCPlugins::GENERATED_GROUP_ATTRIBUTE, true)
           group
         end
 
@@ -66,26 +133,48 @@ module SonVu
           face.pushpull(-params.fetch(:mortise_depth))
 
           apply_group_material(group, mortise_material)
+          mark_generated_group(group)
+          group
+        end
+
+        def create_mortise_cutter(params, origin: Geom::Point3d.new(0, 0, 0))
+          group = Sketchup.active_model.active_entities.add_group
+          group.name = MORTISE_CUTTER_GROUP_NAME
+
+          points = translate_points(points_for_dogbone_mortise_profile(params), origin)
+          face = add_polyline_face(group.entities, points)
+          face.pushpull(-params.fetch(:mortise_depth))
+
           group
         end
 
         def create_tenon_template(params, origin: Geom::Point3d.new(0, 0, 0))
-          tenon_width = params.fetch(:mortise_width) - params.fetch(:clearance)
-          tenon_height = params.fetch(:mortise_height) - params.fetch(:clearance)
-          tenon_length = params.fetch(:tenon_length)
+          tenon_width = params.fetch(:tenon_width)
+          tenon_height = params.fetch(:tenon_height)
+          tenon_thickness = params.fetch(:tenon_thickness)
 
-          validate_tenon_dimensions(tenon_width, tenon_height, tenon_length)
+          validate_tenon_dimensions(tenon_width, tenon_height, tenon_thickness)
 
-          tenon_origin = Geom::Point3d.new(origin.x + mortise_profile_right_extent(params) + template_gap, origin.y, origin.z)
+          tenon_origin = tenon_template_origin(params, origin)
 
-          create_rectangular_solid(
-            group_name: TENON_GROUP_NAME,
-            width: tenon_width,
-            height: tenon_height,
-            depth: tenon_length,
-            origin: tenon_origin,
-            material: tenon_material
-          )
+          group = Sketchup.active_model.active_entities.add_group
+          group.name = TENON_GROUP_NAME
+
+          points = translate_points(build_tenon_profile_points(params), tenon_origin)
+          face = add_polyline_face(group.entities, points)
+          # The tenon is generated from a closed 2D CNC profile first, then
+          # extruded into a clean grouped solid.
+          face.pushpull(tenon_thickness)
+
+          apply_group_material(group, tenon_material)
+          mark_generated_group(group)
+          group
+        end
+
+        def tenon_template_origin(params, origin)
+          return origin unless params[:create_mortise]
+
+          Geom::Point3d.new(origin.x + mortise_profile_right_extent(params) + template_gap, origin.y, origin.z)
         end
 
         def create_labels(params, origin: Geom::Point3d.new(0, 0, 0))
@@ -95,6 +184,7 @@ module SonVu
           add_mortise_labels(group.entities, params, origin) if params[:create_mortise]
           add_tenon_labels(group.entities, params, origin) if params[:create_tenon]
 
+          mark_generated_group(group)
           group
         end
 
@@ -108,13 +198,13 @@ module SonVu
         end
 
         def add_tenon_labels(entities, params, origin)
-          tenon_width = params.fetch(:mortise_width) - params.fetch(:clearance)
-          tenon_height = params.fetch(:mortise_height) - params.fetch(:clearance)
-          tenon_origin_x = origin.x + mortise_profile_right_extent(params) + template_gap
+          tenon_width = params.fetch(:tenon_width)
+          tenon_height = params.fetch(:tenon_height)
+          tenon_origin_x = tenon_template_origin(params, origin).x
           label_origin = Geom::Point3d.new(
             tenon_origin_x + tenon_width + label_gap,
             origin.y - label_gap,
-            origin.z + params.fetch(:tenon_length)
+            origin.z + params.fetch(:tenon_thickness)
           )
           add_text_lines(entities, tenon_label_lines(tenon_width, tenon_height, params), label_origin)
         end
@@ -128,26 +218,95 @@ module SonVu
 
         def mortise_label_lines(params)
           [
-            "Mortise width: #{format_length_mm(params.fetch(:mortise_width))} mm",
-            "Mortise height: #{format_length_mm(params.fetch(:mortise_height))} mm",
-            "Mortise depth: #{format_length_mm(params.fetch(:mortise_depth))} mm",
-            "Cutter diameter: #{format_length_mm(params.fetch(:cutter_diameter))} mm",
-            "Clearance: #{format_length_mm(params.fetch(:clearance))} mm"
+            "Rộng mộng âm: #{format_length_mm(params.fetch(:mortise_width))} mm",
+            "Cao mộng âm: #{format_length_mm(params.fetch(:mortise_height))} mm",
+            "Sâu mộng âm: #{format_length_mm(params.fetch(:mortise_depth))} mm",
+            "Đường kính dao CNC: #{format_length_mm(params.fetch(:cutter_diameter))} mm",
+            "Độ hở lắp ráp: #{format_length_mm(params.fetch(:clearance))} mm"
           ]
         end
 
         def tenon_label_lines(tenon_width, tenon_height, params)
           [
-            "Tenon width: #{format_length_mm(tenon_width)} mm",
-            "Tenon height: #{format_length_mm(tenon_height)} mm",
-            "Tenon length: #{format_length_mm(params.fetch(:tenon_length))} mm"
+            "Rộng mộng dương: #{format_length_mm(tenon_width)} mm",
+            "Cao mộng dương theo mặt chọn: #{format_length_mm(tenon_height)} mm",
+            "Dày mộng dương: #{format_length_mm(params.fetch(:tenon_thickness))} mm"
           ]
         end
 
         def validate_tenon_dimensions(width, height, length)
-          raise 'Tenon width must be greater than 0.' unless width.positive?
-          raise 'Tenon height must be greater than 0.' unless height.positive?
-          raise 'Tenon length must be greater than 0.' unless length.positive?
+          raise 'Rộng mộng dương phải lớn hơn 0.' unless width.positive?
+          raise 'Cao mộng dương phải lớn hơn 0.' unless height.positive?
+          raise 'Dày mộng dương phải lớn hơn 0.' unless length.positive?
+        end
+
+        def build_tenon_profile_points(params)
+          tenon_width = params.fetch(:tenon_width)
+          tenon_height = params.fetch(:tenon_height)
+          tenon_thickness = params.fetch(:tenon_thickness)
+
+          validate_tenon_dimensions(tenon_width, tenon_height, tenon_thickness)
+          return rectangle_points(Geom::Point3d.new(0, 0, 0), tenon_width, tenon_height) unless params.fetch(:tenon_relief_enabled, true)
+
+          add_side_semicircle_reliefs(tenon_width, tenon_height, params.fetch(:cutter_diameter) / 2.0)
+        end
+
+        def add_side_semicircle_reliefs(tenon_width, tenon_height, cutter_radius)
+          validate_side_relief_dimensions(tenon_width, tenon_height, cutter_radius)
+
+          relief_center_y = tenon_height / 2.0
+
+          # Side-edge reliefs:
+          # The tenon is a rectangular tab across the selected side face. The
+          # cutter-radius half-circles are cut into the left and right ends,
+          # matching the side-root relief shape shown in the reference model.
+          points = [
+            Geom::Point3d.new(0, 0, 0),
+            Geom::Point3d.new(tenon_width, 0, 0),
+            Geom::Point3d.new(tenon_width, relief_center_y - cutter_radius, 0)
+          ]
+          points.concat(
+            side_relief_arc_points(
+              Geom::Point3d.new(tenon_width, relief_center_y, 0),
+              cutter_radius,
+              -Math::PI / 2.0,
+              -Math::PI * 1.5
+            )
+          )
+          points << Geom::Point3d.new(tenon_width, tenon_height, 0)
+          points << Geom::Point3d.new(0, tenon_height, 0)
+          points << Geom::Point3d.new(0, relief_center_y + cutter_radius, 0)
+          points.concat(
+            side_relief_arc_points(
+              Geom::Point3d.new(0, relief_center_y, 0),
+              cutter_radius,
+              Math::PI / 2.0,
+              -Math::PI / 2.0
+            )
+          )
+          remove_duplicate_neighbor_points(points)
+        end
+
+        def validate_side_relief_dimensions(tenon_width, tenon_height, cutter_radius)
+          raise 'Bán kính dao phải lớn hơn 0.' unless cutter_radius.positive?
+
+          minimum_size = cutter_radius * 2.0
+          return if tenon_width > minimum_size && tenon_height > minimum_size
+
+          raise 'Mộng dương quá nhỏ để khoét bán nguyệt ở hai đầu theo bán kính dao.'
+        end
+
+        def side_relief_arc_points(center, radius, start_angle, end_angle)
+          sweep = end_angle - start_angle
+
+          (1..DOGBONE_ARC_SEGMENTS).map do |index|
+            angle = start_angle + (sweep * index / DOGBONE_ARC_SEGMENTS)
+            Geom::Point3d.new(
+              center.x + (Math.cos(angle) * radius),
+              center.y + (Math.sin(angle) * radius),
+              0
+            )
+          end
         end
 
         def points_for_dogbone_mortise_profile(params)
@@ -342,7 +501,7 @@ module SonVu
 
         def add_polyline_face(entities, points)
           face = entities.add_face(points)
-          raise 'Unable to create dog-bone mortise profile face.' unless face
+          raise 'Không tạo được mặt biên dạng mộng xương chó.' unless face
 
           face
         end
@@ -365,7 +524,7 @@ module SonVu
             DOGBONE_STYLE_HORIZONTAL_TBONE,
             DOGBONE_STYLE_VERTICAL_TBONE
           ].join(', ')
-          "Unsupported dogbone style: #{style}. Supported styles: #{supported_styles}."
+          "Kiểu khoét góc mộng âm không hỗ trợ: #{style}. Các kiểu hợp lệ: #{supported_styles}."
         end
 
         def dogbone_arc_points(center, radius, start_point, end_point)
@@ -424,10 +583,11 @@ module SonVu
           points = rectangle_points(origin, width, height)
 
           face = group.entities.add_face(points)
-          raise "Unable to create #{group_name} face." unless face
+          raise "Không tạo được mặt cho nhóm #{group_name}." unless face
 
           face.pushpull(depth)
           apply_group_material(group, material) if material
+          mark_generated_group(group) if GENERATED_GROUP_NAMES.include?(group.name)
           group
         end
 
