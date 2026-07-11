@@ -10,21 +10,21 @@ module SonVu
     module DogboneJoinery
       module DialogHTML
         MORTISE_NUMERIC_FIELDS = [
-          [:mortise_width_mm, 'Rộng mộng âm', '80'],
-          [:mortise_height_mm, 'Cao mộng âm', '20'],
-          [:mortise_depth_mm, 'Sâu mộng âm', '18'],
-          [:cutter_diameter_mm, 'Đường kính dao CNC', '6'],
-          [:clearance_mm, 'Độ hở lắp ráp', '0.2']
+          [:mortise_width_mm, 'Rộng mộng âm', 'any'],
+          [:mortise_height_mm, 'Cao mộng âm', 'any'],
+          [:mortise_depth_mm, 'Sâu mộng âm', 'any'],
+          [:cutter_diameter_mm, 'Đường kính dao CNC', 'any']
         ].freeze
 
         TENON_NUMERIC_FIELDS = [
-          [:tenon_width_mm, 'Rộng mộng dương', '80'],
-          [:tenon_thickness_mm, 'Dày mộng dương', '18']
+          [:tenon_width_mm, 'Rộng mộng dương', 'any'],
+          [:tenon_thickness_mm, 'Độ vươn từ mặt đã chọn', 'any'],
+          [:tenon_edge_offset_mm, 'Khoảng cách từ mép cạnh', 'any']
         ].freeze
 
         module_function
 
-        def html(face_context = {}, mode = :joint)
+        def html(face_context = {}, mode = :mortise)
           <<~HTML
             <!doctype html>
             <html lang="vi">
@@ -359,6 +359,7 @@ module SonVu
                     </section>
 
                     #{mode_sections(mode, face_context)}
+                    #{mode == :mortise ? '' : clearance_section}
 
                     <section class="panel compact-panel">
                       <div class="switch-list">
@@ -423,6 +424,7 @@ module SonVu
                       cut_mortise_into_selected_solid: checkedFor('cut_mortise_into_selected_solid'),
                       tenon_width_mm: valueFor('tenon_width_mm'),
                       tenon_thickness_mm: valueFor('tenon_thickness_mm'),
+                      tenon_edge_offset_mm: valueFor('tenon_edge_offset_mm'),
                       create_tenon: checkedFor('create_tenon'),
                       tenon_relief_enabled: checkedFor('tenon_relief_enabled'),
                       add_labels: checkedFor('add_labels')
@@ -473,6 +475,7 @@ module SonVu
             cut_mortise_into_selected_solid: false,
             tenon_width_mm: Dialog::NUMERIC_DEFAULTS_MM.fetch(:tenon_width_mm),
             tenon_thickness_mm: Dialog::NUMERIC_DEFAULTS_MM.fetch(:tenon_thickness_mm),
+            tenon_edge_offset_mm: Dialog::NUMERIC_DEFAULTS_MM.fetch(:tenon_edge_offset_mm),
             create_tenon: mode == :tenon,
             tenon_relief_enabled: true,
             add_labels: false
@@ -486,16 +489,27 @@ module SonVu
           when :tenon
             tenon_section(face_context)
           else
-            mortise_section(include_toggle: true) + tenon_section(face_context, include_toggle: true)
+            mortise_section
           end
         end
 
-        def mortise_section(include_toggle: false)
+        def clearance_section
+          <<~HTML
+            <section class="panel compact-panel">
+              <div class="grid">
+                #{numeric_field(:clearance_mm, 'Độ hở lắp ráp tổng', 'any')}
+              </div>
+              <div class="helper-text">Độ hở được trừ một lần khỏi tổng chiều rộng và tổng chiều cao mộng dương.</div>
+            </section>
+          HTML
+        end
+
+        def mortise_section
           <<~HTML
             <section class="panel">
               <div class="section-title">
                 <h2>Tạo mộng âm</h2>
-                #{include_toggle ? inline_switch(:create_mortise, true) : hidden_checked(:create_mortise, true)}
+                #{hidden_checked(:create_mortise, true)}
               </div>
               <div class="grid">
                 #{MORTISE_NUMERIC_FIELDS.map { |field| numeric_field(*field) }.join}
@@ -513,12 +527,12 @@ module SonVu
           HTML
         end
 
-        def tenon_section(face_context, include_toggle: false)
+        def tenon_section(face_context)
           <<~HTML
             <section class="panel">
               <div class="section-title">
                 <h2>Tạo mộng dương</h2>
-                #{include_toggle ? inline_switch(:create_tenon, false) : hidden_checked(:create_tenon, true)}
+                #{hidden_checked(:create_tenon, true)}
               </div>
               #{face_height_panel(face_context)}
               <div class="grid block-gap">
@@ -531,17 +545,22 @@ module SonVu
           HTML
         end
 
-        def numeric_field(key, label, step)
-          default_value = Dialog::NUMERIC_DEFAULTS_MM.fetch(key)
+        def numeric_field(key, label, step, unit = 'mm', min = '0')
+          default_value = numeric_default_value(key)
+          unit_html = unit ? %(<span class="unit">#{html_escape(unit)}</span>) : ''
           <<~HTML
             <div class="field">
               <label for="#{html_escape(key)}">#{html_escape(label)}</label>
               <div class="unit-input">
-                <input id="#{html_escape(key)}" name="#{html_escape(key)}" type="number" min="0" step="#{html_escape(step)}" value="#{html_escape(default_value)}" inputmode="decimal">
-                <span class="unit">mm</span>
+                <input id="#{html_escape(key)}" name="#{html_escape(key)}" type="number" min="#{html_escape(min)}" step="#{html_escape(step)}" value="#{html_escape(default_value)}" inputmode="decimal">
+                #{unit_html}
               </div>
             </div>
           HTML
+        end
+
+        def numeric_default_value(key)
+          Dialog::NUMERIC_DEFAULTS_MM.fetch(key)
         end
 
         def segment_field(style)
@@ -558,46 +577,28 @@ module SonVu
           if face_context[:side_face]
             <<~HTML
               <div class="face-measure">
-                <span class="label">Chiều cao lấy từ mặt cạnh đã chọn</span>
-                <strong>#{html_escape(face_context[:height_label])}</strong>
+                <span class="label">Kích thước mặt đã chọn (rộng × cao)</span>
+                <strong>#{html_escape(face_context[:width_label])} × #{html_escape(face_context[:height_label])}</strong>
               </div>
             HTML
           elsif face_context[:selected]
             <<~HTML
               <div class="face-measure warning">
-                Mặt đã chọn không phải mặt cạnh thẳng đứng. Hãy chọn một mặt bên của model trước khi tạo mộng dương.
+                Không đọc được hệ trục hoặc kích thước của mặt đã chọn. Hãy chọn một mặt phẳng hợp lệ.
               </div>
             HTML
           else
             <<~HTML
               <div class="face-measure warning">
-                Chưa chọn mặt cạnh. Mộng dương cần một mặt bên để tự lấy chiều cao.
+                Chưa chọn mặt. Mộng dương cần một mặt phẳng để xác định chiều rộng, chiều cao và hướng vươn.
               </div>
             HTML
           end
         end
 
-        def inline_switch(key, checked_by_default)
-          checked = checked_by_default ? ' checked' : ''
-          <<~HTML
-            <label class="switch inline-switch">
-              <input type="checkbox" name="#{html_escape(key)}"#{checked}>
-              <span>Bật</span>
-            </label>
-          HTML
-        end
-
         def hidden_checked(key, checked_by_default)
           checked = checked_by_default ? ' checked' : ''
           %(<input type="checkbox" name="#{html_escape(key)}"#{checked} hidden>)
-        end
-
-        def mortise_enabled_default(mode)
-          mode != :tenon
-        end
-
-        def tenon_enabled_default(mode)
-          mode == :tenon
         end
 
         def switch_field(key, label, checked_by_default)

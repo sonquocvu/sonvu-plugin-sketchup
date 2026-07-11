@@ -149,22 +149,23 @@ module SonVu
         end
 
         def create_tenon_template(params, origin: Geom::Point3d.new(0, 0, 0))
-          tenon_width = params.fetch(:tenon_width)
-          tenon_height = params.fetch(:tenon_height)
-          tenon_thickness = params.fetch(:tenon_thickness)
+          tenon_width = effective_tenon_width(params)
+          tenon_height = effective_tenon_height(params)
+          tenon_projection = tenon_projection(params)
+          cutter_radius = params.fetch(:cutter_diameter) / 2.0
 
-          validate_tenon_dimensions(tenon_width, tenon_height, tenon_thickness)
+          validate_tenon_clearance(params)
+          validate_tenon_dimensions(tenon_width, tenon_height, tenon_projection)
+          validate_tenon_layout(params)
+          validate_tenon_relief_dimensions(tenon_width, tenon_projection, cutter_radius) if params.fetch(:tenon_relief_enabled, true)
 
           tenon_origin = tenon_template_origin(params, origin)
 
           group = Sketchup.active_model.active_entities.add_group
           group.name = TENON_GROUP_NAME
 
-          points = translate_points(build_tenon_profile_points(params), tenon_origin)
-          face = add_polyline_face(group.entities, points)
-          # The tenon is generated from a closed 2D CNC profile first, then
-          # extruded into a clean grouped solid.
-          face.pushpull(tenon_thickness)
+          profile = tenon_profile_points(tenon_origin, tenon_width, tenon_projection, cutter_radius, params)
+          add_xz_profile_solid(group.entities, profile, tenon_height)
 
           apply_group_material(group, tenon_material)
           mark_generated_group(group)
@@ -172,9 +173,22 @@ module SonVu
         end
 
         def tenon_template_origin(params, origin)
-          return origin unless params[:create_mortise]
+          base_origin = Geom::Point3d.new(
+            origin.x + tenon_edge_offset(params),
+            origin.y + tenon_vertical_inset(params),
+            origin.z
+          )
+          return base_origin unless params[:create_mortise]
 
-          Geom::Point3d.new(origin.x + mortise_profile_right_extent(params) + template_gap, origin.y, origin.z)
+          Geom::Point3d.new(
+            origin.x + mortise_profile_right_extent(params) + template_gap + tenon_edge_offset(params),
+            origin.y + tenon_vertical_inset(params),
+            origin.z
+          )
+        end
+
+        def tenon_layout_width(params)
+          effective_tenon_width(params)
         end
 
         def create_labels(params, origin: Geom::Point3d.new(0, 0, 0))
@@ -198,13 +212,13 @@ module SonVu
         end
 
         def add_tenon_labels(entities, params, origin)
-          tenon_width = params.fetch(:tenon_width)
-          tenon_height = params.fetch(:tenon_height)
+          tenon_width = effective_tenon_width(params)
+          tenon_height = effective_tenon_height(params)
           tenon_origin_x = tenon_template_origin(params, origin).x
           label_origin = Geom::Point3d.new(
-            tenon_origin_x + tenon_width + label_gap,
+            tenon_origin_x + tenon_layout_width(params) + label_gap,
             origin.y - label_gap,
-            origin.z + params.fetch(:tenon_thickness)
+            origin.z + tenon_projection(params)
           )
           add_text_lines(entities, tenon_label_lines(tenon_width, tenon_height, params), label_origin)
         end
@@ -229,84 +243,136 @@ module SonVu
         def tenon_label_lines(tenon_width, tenon_height, params)
           [
             "Rộng mộng dương: #{format_length_mm(tenon_width)} mm",
-            "Cao mộng dương theo mặt chọn: #{format_length_mm(tenon_height)} mm",
-            "Dày mộng dương: #{format_length_mm(params.fetch(:tenon_thickness))} mm"
+            "Độ vươn mộng dương từ mặt đã chọn: #{format_length_mm(tenon_projection(params))} mm",
+            "Chiều cao mộng dương sau độ hở: #{format_length_mm(tenon_height)} mm",
+            "Khoảng cách từ mép cạnh: #{format_length_mm(tenon_edge_offset(params))} mm"
           ]
         end
 
         def validate_tenon_dimensions(width, height, length)
-          raise 'Rộng mộng dương phải lớn hơn 0.' unless width.positive?
-          raise 'Cao mộng dương phải lớn hơn 0.' unless height.positive?
-          raise 'Dày mộng dương phải lớn hơn 0.' unless length.positive?
+          raise 'Rộng mộng dương sau độ hở phải lớn hơn 0.' unless width.positive?
+          raise 'Chiều cao mộng dương sau độ hở phải lớn hơn 0.' unless height.positive?
+          raise 'Độ vươn mộng dương từ mặt đã chọn phải lớn hơn 0.' unless length.positive?
         end
 
-        def build_tenon_profile_points(params)
-          tenon_width = params.fetch(:tenon_width)
-          tenon_height = params.fetch(:tenon_height)
-          tenon_thickness = params.fetch(:tenon_thickness)
-
-          validate_tenon_dimensions(tenon_width, tenon_height, tenon_thickness)
-          return rectangle_points(Geom::Point3d.new(0, 0, 0), tenon_width, tenon_height) unless params.fetch(:tenon_relief_enabled, true)
-
-          add_side_semicircle_reliefs(tenon_width, tenon_height, params.fetch(:cutter_diameter) / 2.0)
+        def validate_tenon_clearance(params)
+          raise 'Độ hở lắp ráp không được nhỏ hơn 0.' if tenon_clearance(params).negative?
         end
 
-        def add_side_semicircle_reliefs(tenon_width, tenon_height, cutter_radius)
-          validate_side_relief_dimensions(tenon_width, tenon_height, cutter_radius)
+        def validate_tenon_layout(params)
+          raise 'Khoảng cách từ mép cạnh không được nhỏ hơn 0.' if tenon_edge_offset(params).negative?
 
-          relief_center_y = tenon_height / 2.0
+          face_width = params[:tenon_face_width]
+          return unless face_width&.positive?
 
-          # Side-edge reliefs:
-          # The tenon is a rectangular tab across the selected side face. The
-          # cutter-radius half-circles are cut into the left and right ends,
-          # matching the side-root relief shape shown in the reference model.
-          points = [
-            Geom::Point3d.new(0, 0, 0),
-            Geom::Point3d.new(tenon_width, 0, 0),
-            Geom::Point3d.new(tenon_width, relief_center_y - cutter_radius, 0)
+          required_width = tenon_edge_offset(params) + tenon_layout_width(params)
+          return if required_width <= face_width + 0.001
+
+          raise "Bố trí mộng dương vượt quá chiều rộng mặt đã chọn (cần #{format_length_mm(required_width)} mm, có #{format_length_mm(face_width)} mm)."
+        end
+
+        def validate_tenon_relief_dimensions(width, projection, cutter_radius)
+          validate_side_relief_dimensions(width, projection, cutter_radius)
+        end
+
+        def add_xz_profile_solid(entities, base_points, thickness)
+          raise 'Không tạo được khối mộng dương.' if base_points.length < 3
+
+          back_points = base_points.map do |point|
+            Geom::Point3d.new(point.x, point.y + thickness, point.z)
+          end
+
+          face_sets = [
+            base_points.reverse,
+            back_points
           ]
-          points.concat(
-            side_relief_arc_points(
-              Geom::Point3d.new(tenon_width, relief_center_y, 0),
-              cutter_radius,
-              -Math::PI / 2.0,
-              -Math::PI * 1.5
-            )
-          )
-          points << Geom::Point3d.new(tenon_width, tenon_height, 0)
-          points << Geom::Point3d.new(0, tenon_height, 0)
-          points << Geom::Point3d.new(0, relief_center_y + cutter_radius, 0)
-          points.concat(
-            side_relief_arc_points(
-              Geom::Point3d.new(0, relief_center_y, 0),
-              cutter_radius,
-              Math::PI / 2.0,
-              -Math::PI / 2.0
-            )
-          )
-          remove_duplicate_neighbor_points(points)
+          base_points.each_index do |index|
+            next_index = (index + 1) % base_points.length
+            face_sets << [
+              base_points[index],
+              base_points[next_index],
+              back_points[next_index],
+              back_points[index]
+            ]
+          end
+
+          face_sets.each do |face_points|
+            face = entities.add_face(face_points)
+            raise 'Không tạo được khối mộng dương.' unless face
+          end
         end
 
-        def validate_side_relief_dimensions(tenon_width, tenon_height, cutter_radius)
-          raise 'Bán kính dao phải lớn hơn 0.' unless cutter_radius.positive?
-
-          minimum_size = cutter_radius * 2.0
-          return if tenon_width > minimum_size && tenon_height > minimum_size
-
-          raise 'Mộng dương quá nhỏ để khoét bán nguyệt ở hai đầu theo bán kính dao.'
-        end
-
-        def side_relief_arc_points(center, radius, start_angle, end_angle)
+        def side_relief_arc_xz_points(center, radius, start_angle, end_angle)
           sweep = end_angle - start_angle
 
-          (1..DOGBONE_ARC_SEGMENTS).map do |index|
+          (1...DOGBONE_ARC_SEGMENTS).map do |index|
             angle = start_angle + (sweep * index / DOGBONE_ARC_SEGMENTS)
             Geom::Point3d.new(
               center.x + (Math.cos(angle) * radius),
-              center.y + (Math.sin(angle) * radius),
-              0
+              center.y,
+              center.z + (Math.sin(angle) * radius)
             )
           end
+        end
+
+        def tenon_profile_points(origin, width, projection, cutter_radius, params)
+          return xz_rectangle_points(origin, width, projection) unless params.fetch(:tenon_relief_enabled, true)
+
+          left_center = Geom::Point3d.new(origin.x, origin.y, origin.z + cutter_radius)
+          right_x = origin.x + width
+          right_center = Geom::Point3d.new(right_x, origin.y, origin.z + cutter_radius)
+
+          points = [Geom::Point3d.new(origin.x, origin.y, origin.z)]
+          points.concat(side_relief_arc_xz_points(left_center, cutter_radius, -Math::PI / 2.0, Math::PI / 2.0))
+          points << Geom::Point3d.new(origin.x, origin.y, origin.z + (cutter_radius * 2.0))
+          points << Geom::Point3d.new(origin.x, origin.y, origin.z + projection)
+          points << Geom::Point3d.new(right_x, origin.y, origin.z + projection)
+          points << Geom::Point3d.new(right_x, origin.y, origin.z + (cutter_radius * 2.0))
+          points.concat(side_relief_arc_xz_points(right_center, cutter_radius, Math::PI / 2.0, Math::PI * 1.5))
+          points << Geom::Point3d.new(right_x, origin.y, origin.z)
+          remove_duplicate_neighbor_points(points)
+        end
+
+        def xz_rectangle_points(origin, width, projection)
+          [
+            Geom::Point3d.new(origin.x, origin.y, origin.z),
+            Geom::Point3d.new(origin.x, origin.y, origin.z + projection),
+            Geom::Point3d.new(origin.x + width, origin.y, origin.z + projection),
+            Geom::Point3d.new(origin.x + width, origin.y, origin.z)
+          ]
+        end
+
+        def tenon_edge_offset(params)
+          params.fetch(:tenon_edge_offset, 0)
+        end
+
+        def validate_side_relief_dimensions(tenon_width, tenon_projection, cutter_radius)
+          raise 'Bán kính dao phải lớn hơn 0.' unless cutter_radius.positive?
+
+          minimum_size = cutter_radius * 2.0
+          return if tenon_width > minimum_size && tenon_projection > minimum_size
+
+          raise 'Mộng dương quá hẹp hoặc độ vươn quá ngắn để khoét bán nguyệt ở hai vai theo đường kính dao.'
+        end
+
+        def effective_tenon_width(params)
+          params.fetch(:tenon_width) - tenon_clearance(params)
+        end
+
+        def effective_tenon_height(params)
+          params.fetch(:tenon_height) - tenon_clearance(params)
+        end
+
+        def tenon_vertical_inset(params)
+          tenon_clearance(params) / 2.0
+        end
+
+        def tenon_clearance(params)
+          params.fetch(:clearance, 0)
+        end
+
+        def tenon_projection(params)
+          params.fetch(:tenon_projection) { params.fetch(:tenon_thickness) }
         end
 
         def points_for_dogbone_mortise_profile(params)
@@ -593,9 +659,20 @@ module SonVu
 
         def apply_group_material(group, material)
           group.material = material
-          group.entities.grep(Sketchup::Face).each do |face|
-            face.material = material
-            face.back_material = material
+          group.entities.each do |entity|
+            case entity
+            when Sketchup::Face
+              entity.material = material
+              entity.back_material = material
+            when Sketchup::Group
+              apply_group_material(entity, material)
+            when Sketchup::ComponentInstance
+              entity.material = material
+              entity.definition.entities.grep(Sketchup::Face).each do |face|
+                face.material = material
+                face.back_material = material
+              end
+            end
           end
         end
 

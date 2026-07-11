@@ -39,16 +39,6 @@ module SonVu
           @toolbar_registered = true
         end
 
-        def create_joint_command
-          @create_joint_command ||= begin
-            command = UI::Command.new(CNCPlugins::COMMAND_CREATE_DOGBONE_JOINT) { open_dialog }
-            command.tooltip = 'Tạo mộng xương chó'
-            command.status_bar_text = 'Tạo và đặt mẫu mộng âm, mộng dương xương chó.'
-            assign_icon_if_available(command, 'create_dogbone_joint')
-            command
-          end
-        end
-
         def create_mortise_command
           @create_mortise_command ||= begin
             command = UI::Command.new(CNCPlugins::COMMAND_CREATE_DOGBONE_MORTISE) { open_dialog(:mortise) }
@@ -97,7 +87,7 @@ module SonVu
           File.expand_path(File.join(__dir__, 'icons', filename))
         end
 
-        def open_dialog(mode = :joint)
+        def open_dialog(mode)
           selected_face = selected_placement_face
           return if selected_face == false
 
@@ -122,7 +112,19 @@ module SonVu
             return unless confirm_boolean_cut
           end
 
+          if create_tenon_directly?(params, selected_face)
+            DogboneJoinery::PlacementTool.create_on_face(params, selected_face)
+            return
+          end
+
           Sketchup.active_model.select_tool(DogboneJoinery::PlacementTool.new(params, selected_face, cut_target))
+        end
+
+        def create_tenon_directly?(params, selected_face)
+          selected_face &&
+            params[:create_tenon] &&
+            !params[:create_mortise] &&
+            !params[:cut_mortise_into_selected_solid]
         end
 
         def selected_placement_face

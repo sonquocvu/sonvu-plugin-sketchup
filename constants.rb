@@ -8,10 +8,8 @@ module SonVu
     PLUGIN_ID = 'sonvu_cnc_plugins' unless const_defined?(:PLUGIN_ID, false)
     PLUGIN_NAME = 'SonVu CNC Plugins' unless const_defined?(:PLUGIN_NAME, false)
     MENU_DOGBONE_JOINERY = 'Mộng CNC'
-    MENU_OPEN = 'Tạo mộng xương chó'
     MENU_DELETE_GENERATED_TEMPLATES = 'Xóa mẫu mộng đã tạo'
     TOOLBAR_DOGBONE_JOINERY = 'Mộng CNC'
-    COMMAND_CREATE_DOGBONE_JOINT = 'Tạo mộng xương chó'
     COMMAND_CREATE_DOGBONE_MORTISE = 'Tạo mộng âm'
     COMMAND_CREATE_DOGBONE_TENON = 'Tạo mộng dương'
     COMMAND_DELETE_GENERATED_TEMPLATES = 'Xóa mẫu mộng đã tạo'
@@ -23,17 +21,17 @@ module SonVu
       'Tùy chỉnh' => {},
       'MDF 17mm / dao 6mm' => {
         mortise_depth_mm: 17,
-        tenon_length_mm: 17,
+        tenon_length_mm: 34,
         cutter_diameter_mm: 6
       },
       'MDF 18mm / dao 6mm' => {
         mortise_depth_mm: 18,
-        tenon_length_mm: 18,
+        tenon_length_mm: 36,
         cutter_diameter_mm: 6
       },
       'Ván ép 18mm / dao 4mm' => {
         mortise_depth_mm: 18,
-        tenon_length_mm: 18,
+        tenon_length_mm: 36,
         cutter_diameter_mm: 4
       }
     }.freeze

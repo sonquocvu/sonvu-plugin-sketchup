@@ -10,7 +10,6 @@ module SonVu
     module DogboneJoinery
       module Dialog
         SUCCESS_MESSAGE = 'SonVu CNC Plugins - Mộng xương chó đã sẵn sàng.'
-        INPUT_TITLE = 'Tạo mộng xương chó'
         MORTISE_TITLE = 'Tạo mộng âm'
         TENON_TITLE = 'Tạo mộng dương'
         YES = 'Có'
@@ -26,7 +25,8 @@ module SonVu
           'Tạo mộng âm?',
           'Cắt mộng âm vào khối đã chọn?',
           'Rộng mộng dương (mm)',
-          'Dày mộng dương (mm)',
+          'Độ vươn mộng dương từ mặt đã chọn (mm)',
+          'Khoảng cách từ mép cạnh (mm)',
           'Tạo mộng dương?',
           'Khoét bán nguyệt hai đầu mộng dương?',
           'Thêm nhãn?'
@@ -39,8 +39,9 @@ module SonVu
           mortise_depth_mm: 18,
           cutter_diameter_mm: 6,
           clearance_mm: 0.2,
-          tenon_width_mm: 80,
-          tenon_thickness_mm: 18
+          tenon_width_mm: 40,
+          tenon_thickness_mm: 10,
+          tenon_edge_offset_mm: 20
         }.freeze
         DEFAULTS = [
           PRESET_NAMES.first,
@@ -54,6 +55,7 @@ module SonVu
           NO,
           NUMERIC_DEFAULTS_MM[:tenon_width_mm],
           NUMERIC_DEFAULTS_MM[:tenon_thickness_mm],
+          NUMERIC_DEFAULTS_MM[:tenon_edge_offset_mm],
           NO,
           YES,
           NO
@@ -70,6 +72,7 @@ module SonVu
           "#{YES}|#{NO}",
           '',
           '',
+          '',
           "#{YES}|#{NO}",
           "#{YES}|#{NO}",
           "#{YES}|#{NO}"
@@ -78,14 +81,14 @@ module SonVu
         module_function
 
         def open
-          show do |settings|
+          show(mode: :mortise) do |settings|
             CNCPlugins::UIHelpers.message(selected_values_message(settings))
           end
         end
 
-        def show(selected_face: nil, mode: :joint, &block)
+        def show(selected_face: nil, mode: :mortise, &block)
           mode = normalized_mode(mode)
-          return show_inputbox(mode: mode, &block) unless html_dialog_supported?
+          return show_inputbox(mode: mode, face_context: selected_face_context(selected_face), &block) unless html_dialog_supported?
 
           face_context = selected_face_context(selected_face)
           dialog = create_html_dialog(mode)
@@ -103,11 +106,11 @@ module SonVu
           dialog
         end
 
-        def show_inputbox(mode: :joint)
+        def show_inputbox(mode: :mortise, face_context: selected_face_context(nil))
           input = UI.inputbox(PROMPTS, defaults_for_mode(mode), LISTS, dialog_title(mode))
           return nil unless input
 
-          values = parse_input(input, selected_face_context(nil))
+          values = parse_input(input, face_context)
           validation_error = validate(values)
           if validation_error
             CNCPlugins::UIHelpers.message(validation_error)
@@ -137,7 +140,7 @@ module SonVu
         end
 
         def normalized_mode(mode)
-          %i[mortise tenon].include?(mode) ? mode : :joint
+          %i[mortise tenon].include?(mode) ? mode : :mortise
         end
 
         def dialog_title(mode)
@@ -147,7 +150,7 @@ module SonVu
           when :tenon
             TENON_TITLE
           else
-            INPUT_TITLE
+            MORTISE_TITLE
           end
         end
 
@@ -156,10 +159,10 @@ module SonVu
           case mode
           when :mortise
             values[7] = YES
-            values[11] = NO
+            values[12] = NO
           when :tenon
             values[7] = NO
-            values[11] = YES
+            values[12] = YES
           end
           values
         end
@@ -192,29 +195,72 @@ module SonVu
         end
 
         def selected_face_context(face)
-          return { selected: false, side_face: false, height_mm: nil, height_label: 'Chưa chọn mặt cạnh' } unless face
+          return {
+            selected: false,
+            side_face: false,
+            width_mm: nil,
+            height_mm: nil,
+            width_label: 'Chưa chọn mặt',
+            height_label: 'Chưa chọn mặt'
+          } unless face
 
-          height = side_face_height(face)
-          height_mm = height ? CNCPlugins::Units.model_units_to_millimeters(height) : nil
+          dimensions = face_dimensions(face)
+          width_mm = dimensions ? CNCPlugins::Units.model_units_to_millimeters(dimensions[:width]) : nil
+          height_mm = dimensions ? CNCPlugins::Units.model_units_to_millimeters(dimensions[:height]) : nil
+          valid_face = width_mm&.positive? && height_mm&.positive?
           {
             selected: true,
-            side_face: side_face?(face) && height_mm&.positive?,
+            side_face: valid_face,
+            width_mm: width_mm,
             height_mm: height_mm,
+            width_label: width_mm&.positive? ? format_mm(width_mm) : 'Không đọc được',
             height_label: height_mm&.positive? ? "#{format('%.3f', height_mm).sub(/\.?0+$/, '')} mm" : 'Không đọc được'
           }
         end
 
         def side_face?(face)
-          return false unless defined?(::Sketchup::Face) && face.is_a?(::Sketchup::Face)
-
-          face.normal.z.abs < 0.15
+          dimensions = face_dimensions(face)
+          dimensions && dimensions[:width].positive? && dimensions[:height].positive?
         end
 
         def side_face_height(face)
-          return nil unless face.respond_to?(:bounds)
+          dimensions = face_dimensions(face)
+          dimensions && dimensions[:height]
+        end
 
-          height = face.bounds.depth
-          height.positive? ? height : nil
+        def face_dimensions(face)
+          return nil unless face.respond_to?(:edges) && face.respond_to?(:vertices) && face.respond_to?(:normal)
+
+          edge = face.edges.max_by(&:length)
+          vertices = face.vertices.map(&:position)
+          return nil unless edge && vertices.length >= 3
+
+          xaxis = edge.end.position - edge.start.position
+          return nil if xaxis.length <= 0.001
+
+          xaxis.normalize!
+          normal = Geom::Vector3d.new(face.normal.x, face.normal.y, face.normal.z)
+          normal.normalize!
+          yaxis = normal * xaxis
+          return nil if yaxis.length <= 0.001
+
+          yaxis.normalize!
+          reference = vertices.first
+          x_values = vertices.map { |vertex| vector_projection(vertex - reference, xaxis) }
+          y_values = vertices.map { |vertex| vector_projection(vertex - reference, yaxis) }
+
+          {
+            width: x_values.max - x_values.min,
+            height: y_values.max - y_values.min
+          }
+        end
+
+        def vector_projection(vector, axis)
+          (vector.x * axis.x) + (vector.y * axis.y) + (vector.z * axis.z)
+        end
+
+        def format_mm(value)
+          "#{format('%.3f', value).sub(/\.?0+$/, '')} mm"
         end
 
         def parse_input(input, face_context = selected_face_context(nil))
@@ -231,9 +277,10 @@ module SonVu
               'cut_mortise_into_selected_solid' => input[8],
               'tenon_width_mm' => input[9],
               'tenon_thickness_mm' => input[10],
-              'create_tenon' => input[11],
-              'tenon_relief_enabled' => input[12],
-              'add_labels' => input[13]
+              'tenon_edge_offset_mm' => input[11],
+              'create_tenon' => input[12],
+              'tenon_relief_enabled' => input[13],
+              'add_labels' => input[14]
             },
             face_context
           )
@@ -253,8 +300,10 @@ module SonVu
             create_mortise: boolean_value(input['create_mortise']),
             cut_mortise_into_selected_solid: boolean_value(input['cut_mortise_into_selected_solid']),
             tenon_width_mm: numeric_value(input['tenon_width_mm']),
+            tenon_face_width_mm: face_context[:width_mm],
             tenon_height_mm: face_context[:height_mm],
             tenon_thickness_mm: preset_or_manual_value(selected_preset, :tenon_length_mm, input['tenon_thickness_mm']),
+            tenon_edge_offset_mm: numeric_value(input['tenon_edge_offset_mm']),
             create_tenon: boolean_value(input['create_tenon']),
             tenon_relief_enabled: boolean_value(input['tenon_relief_enabled']),
             add_labels: boolean_value(input['add_labels']),
@@ -290,14 +339,30 @@ module SonVu
         end
 
         def validate_tenon(values)
-          return 'Vui lòng chọn đúng một mặt cạnh của model trước khi tạo mộng dương.' unless values[:selected_face]
-          return 'Mộng dương chỉ được tạo trên mặt cạnh thẳng đứng của model, không tạo trên mặt trên hoặc mặt đáy.' unless values[:selected_side_face]
-          return 'Không đọc được chiều cao từ mặt cạnh đã chọn.' unless values[:tenon_height_mm]&.positive?
-          return 'Vui lòng nhập số hợp lệ cho rộng và dày mộng dương.' if values[:tenon_width_mm].nil? || values[:tenon_thickness_mm].nil?
+          return 'Vui lòng chọn đúng một mặt phẳng của model trước khi tạo mộng dương.' unless values[:selected_face]
+          return 'Không đọc được hệ trục và kích thước của mặt đã chọn.' unless values[:selected_side_face]
+          return 'Không đọc được chiều rộng hoặc chiều cao từ mặt đã chọn.' unless values[:tenon_face_width_mm]&.positive? && values[:tenon_height_mm]&.positive?
+          return 'Vui lòng nhập số hợp lệ cho rộng, dày và bố trí mộng dương.' if tenon_values_invalid?(values)
           return 'Rộng mộng dương phải lớn hơn 0.' unless values[:tenon_width_mm].positive?
-          return 'Dày mộng dương phải lớn hơn 0.' unless values[:tenon_thickness_mm].positive?
+          return 'Độ vươn mộng dương từ mặt đã chọn phải lớn hơn 0.' unless values[:tenon_thickness_mm].positive?
+          return 'Độ hở phải nhỏ hơn rộng và chiều cao mộng dương.' unless values[:clearance_mm] < values[:tenon_width_mm] && values[:clearance_mm] < values[:tenon_height_mm]
+          return 'Khoảng cách từ mép cạnh không được nhỏ hơn 0.' if values[:tenon_edge_offset_mm].negative?
+
+          finished_width = values[:tenon_width_mm] - values[:clearance_mm]
+          required_width = values[:tenon_edge_offset_mm] + finished_width
+          if required_width > values[:tenon_face_width_mm] + 0.001
+            return "Bố trí mộng dương vượt quá chiều rộng mặt đã chọn (cần #{format_mm(required_width)}, có #{format_mm(values[:tenon_face_width_mm])})."
+          end
 
           nil
+        end
+
+        def tenon_values_invalid?(values)
+          %i[
+            tenon_width_mm
+            tenon_thickness_mm
+            tenon_edge_offset_mm
+          ].any? { |key| values[key].nil? }
         end
 
         def to_settings_hash(values)
@@ -308,9 +373,13 @@ module SonVu
             cutter_diameter: mm_to_length(values[:cutter_diameter_mm]),
             clearance: mm_to_length(values[:clearance_mm]),
             tenon_width: mm_to_length(values[:tenon_width_mm] || values[:mortise_width_mm]),
+            tenon_face_width: values[:tenon_face_width_mm] ? mm_to_length(values[:tenon_face_width_mm]) : nil,
             tenon_height: mm_to_length(values[:tenon_height_mm] || values[:mortise_height_mm]),
+            tenon_face_height: mm_to_length(values[:tenon_height_mm] || values[:mortise_height_mm]),
             tenon_thickness: mm_to_length(values[:tenon_thickness_mm] || values[:mortise_depth_mm]),
+            tenon_projection: mm_to_length(values[:tenon_thickness_mm] || values[:mortise_depth_mm]),
             tenon_length: mm_to_length(values[:tenon_thickness_mm] || values[:mortise_depth_mm]),
+            tenon_edge_offset: mm_to_length(values[:tenon_edge_offset_mm] || NUMERIC_DEFAULTS_MM[:tenon_edge_offset_mm]),
             preset: values[:preset],
             dogbone_style: values[:dogbone_style],
             create_mortise: values[:create_mortise],
@@ -336,9 +405,9 @@ module SonVu
             "Cắt mộng âm vào khối đã chọn: #{format_boolean(settings[:cut_mortise_into_selected_solid])}",
             "Tạo mộng dương: #{format_boolean(settings[:create_tenon])}",
             "Rộng mộng dương: #{format_length(settings[:tenon_width])} mm",
-            "Cao mộng dương theo mặt chọn: #{format_length(settings[:tenon_height])} mm",
-            "Dày mộng dương: #{format_length(settings[:tenon_thickness])} mm",
-            "Khoét bán nguyệt hai đầu mộng dương: #{format_boolean(settings[:tenon_relief_enabled])}",
+            "Độ vươn mộng dương từ mặt đã chọn: #{format_length(settings[:tenon_projection])} mm",
+            "Chiều cao mặt đã chọn: #{format_length(settings[:tenon_face_height])} mm",
+            "Khoảng cách từ mép cạnh: #{format_length(settings[:tenon_edge_offset])} mm",
             "Thêm nhãn: #{format_boolean(settings[:add_labels])}"
           ]
           lines.join("\n")

@@ -17,6 +17,19 @@ module SonVu
           @input_point = Sketchup::InputPoint.new
         end
 
+        def self.create_on_face(params, placement_face)
+          new(params, placement_face, nil).create_on_face
+        end
+
+        def create_on_face
+          reference_point = @placement_face.bounds.center
+          DogboneJoinery::Geometry.create_templates(
+            @params,
+            origin: placement_origin(reference_point),
+            transformation: placement_transformation(reference_point)
+          )
+        end
+
         def activate
           UI.set_status_text(STATUS_TEXT)
         end
@@ -78,8 +91,11 @@ module SonVu
           return nil unless @placement_face
 
           # Transformation math:
-          # Template geometry is authored in local coordinates where X is width,
-          # Y is height, and Z is mortise depth. For face placement we build a
+          # Template geometry is authored in local coordinates where X follows
+          # the selected edge, Y crosses the selected face, and Z is normal to
+          # that face. Mortises use XY as their profile plane and extrude along
+          # -Z. Tenons use XZ as their relieved shoulder plane and extrude through
+          # the selected edge-face thickness along +Y. For face placement we build a
           # local coordinate frame at the clicked point projected onto the
           # selected face plane. Local Z follows the selected face normal for
           # mortises. For tenon-only placement, local Z is corrected to point
@@ -97,7 +113,8 @@ module SonVu
           yaxis = zaxis * xaxis
           yaxis.normalize!
 
-          Geom::Transformation.axes(project_point_to_face(point), xaxis, yaxis, zaxis)
+          origin = tenon_only_template? ? tenon_face_anchor(xaxis, yaxis) : project_point_to_face(point)
+          Geom::Transformation.axes(origin, xaxis, yaxis, zaxis)
         end
 
         def placement_zaxis
@@ -111,13 +128,39 @@ module SonVu
         def outward_normal(normal)
           face_center = selected_face_center
           bounds_center = connected_geometry_bounds_center
-          return normal unless face_center && bounds_center
+          return ray_outward_normal(normal) unless face_center && bounds_center
 
           outward_vector = face_center - bounds_center
-          return normal if outward_vector.length <= 0.001
+          return ray_outward_normal(normal) if outward_vector.length <= 0.001
 
           outward_vector.normalize!
-          vector_dot(normal, outward_vector).negative? ? reversed_vector(normal) : normal
+          bounds_normal = vector_dot(normal, outward_vector).negative? ? reversed_vector(normal) : normal
+          bounds_normal
+        end
+
+        def ray_outward_normal(normal)
+          reversed = reversed_vector(normal)
+          normal_distance = ray_hit_distance(normal)
+          reversed_distance = ray_hit_distance(reversed)
+
+          return normal if normal_distance.nil? && reversed_distance
+          return reversed if reversed_distance.nil? && normal_distance
+          return normal unless normal_distance && reversed_distance
+
+          normal_distance >= reversed_distance ? normal : reversed
+        rescue StandardError
+          normal
+        end
+
+        def ray_hit_distance(direction)
+          face_center = selected_face_center
+          return nil unless face_center
+
+          start = face_center.offset(direction, CNCPlugins::Units.millimeters_to_model_units(1))
+          hit = Sketchup.active_model.raytest([start, direction], true)
+          return nil unless hit && hit.first
+
+          start.distance(hit.first)
         end
 
         def selected_face_center
@@ -152,11 +195,7 @@ module SonVu
 
         def face_local_origin
           if tenon_only_template?
-            return Geom::Point3d.new(
-              -(@params.fetch(:tenon_width) / 2.0),
-              -(@params.fetch(:tenon_height) / 2.0),
-              0
-            )
+            return Geom::Point3d.new(0, 0, 0)
           end
 
           Geom::Point3d.new(
@@ -192,6 +231,20 @@ module SonVu
           candidate = normal.parallel?(world_z) ? world_x : world_z * normal
           candidate.normalize!
           candidate
+        end
+
+        def tenon_face_anchor(xaxis, yaxis)
+          vertices = @placement_face.vertices.map(&:position)
+          return project_point_to_face(@input_point.position) if vertices.empty?
+
+          world_origin = Geom::Point3d.new(0, 0, 0)
+          reference = vertices.first
+          min_x = vertices.map { |vertex| vector_dot(vertex - world_origin, xaxis) }.min
+          min_y = vertices.map { |vertex| vector_dot(vertex - world_origin, yaxis) }.min
+          reference_x = vector_dot(reference - world_origin, xaxis)
+          reference_y = vector_dot(reference - world_origin, yaxis)
+
+          reference.offset(xaxis, min_x - reference_x).offset(yaxis, min_y - reference_y)
         end
       end
     end
