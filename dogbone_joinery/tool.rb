@@ -113,15 +113,13 @@ module SonVu
           yaxis = zaxis * xaxis
           yaxis.normalize!
 
-          origin = tenon_only_template? ? tenon_face_anchor(xaxis, yaxis) : project_point_to_face(point)
+          origin = face_anchored_template? ? face_min_anchor(xaxis, yaxis) : project_point_to_face(point)
           Geom::Transformation.axes(origin, xaxis, yaxis, zaxis)
         end
 
         def placement_zaxis
           normal = Geom::Vector3d.new(@placement_face.normal.x, @placement_face.normal.y, @placement_face.normal.z)
           normal.normalize!
-          return normal unless tenon_only_template?
-
           outward_normal(normal)
         end
 
@@ -198,6 +196,8 @@ module SonVu
             return Geom::Point3d.new(0, 0, 0)
           end
 
+          return Geom::Point3d.new(0, 0, 0) if mortise_only_template?
+
           Geom::Point3d.new(
             -(@params.fetch(:mortise_width) / 2.0),
             -(@params.fetch(:mortise_height) / 2.0),
@@ -207,6 +207,14 @@ module SonVu
 
         def tenon_only_template?
           @params[:create_tenon] && !@params[:create_mortise] && !@cut_target
+        end
+
+        def mortise_only_template?
+          @params[:create_mortise] && !@params[:create_tenon] && !@cut_target
+        end
+
+        def face_anchored_template?
+          tenon_only_template? || mortise_only_template?
         end
 
         def project_point_to_face(point)
@@ -233,7 +241,7 @@ module SonVu
           candidate
         end
 
-        def tenon_face_anchor(xaxis, yaxis)
+        def face_min_anchor(xaxis, yaxis)
           vertices = @placement_face.vertices.map(&:position)
           return project_point_to_face(@input_point.position) if vertices.empty?
 

@@ -19,12 +19,15 @@ SketchUp Ruby extension for CNC and woodworking workflows.
    - Mộng âm: rộng, cao, sâu, đường kính dao và kiểu dog-bone.
    - Mộng dương: rộng, độ vươn, khoảng cách mép, đường kính dao và độ hở. Mỗi lần chạy tạo đúng một mộng dương.
 3. Cấu hình kiểu khoét phù hợp với loại mộng đang tạo.
-4. Bấm tạo mẫu. Mộng dương được đặt tự động trên mặt đã chọn; mộng âm dùng công cụ đặt mẫu.
+4. Bấm tạo mẫu. Cả hai loại mộng được đặt tự động trên mặt đã chọn; không cần bấm thêm một điểm đặt.
 5. Mẫu mộng âm màu đỏ và mộng dương màu xanh sẽ được tạo thành các group riêng để dễ kiểm tra.
 
 ### Lưu ý CNC
 
 - `Mộng âm` là phần hốc cắt vào ván.
+- Khối mẫu mộng âm luôn bắt đầu tại mặt đã chọn và đi vào trong theo chiều sâu âm của hệ trục cục bộ; nó không nhô lên trên bề mặt.
+- Trước khi tạo mộng âm, phải chọn đúng một mặt của model. Plugin lấy trục X theo cạnh dài nhất của mặt, trục Y vuông góc với X trên mặt, rồi định vị mộng bằng hai khoảng cách mép X/Y.
+- Plugin đo chiều sâu model theo phương vuông góc với mặt đã chọn và từ chối mộng âm sâu hơn model. Nó cũng kiểm tra toàn bộ biên dạng dog-bone không vượt khỏi chiều rộng hoặc chiều cao mặt.
 - `Mộng dương` là phần tab lồi để lắp vào mộng âm.
 - `Đường kính dao CNC` ảnh hưởng trực tiếp đến kích thước khoét góc xương chó và khoét góc chân mộng.
 - `Độ hở lắp ráp tổng` được trừ một lần khỏi tổng chiều rộng và tổng chiều cao mộng dương. Ví dụ, mặt 18 mm với độ hở 0,2 mm tạo mộng cao 17,8 mm và căn giữa trên mặt.

@@ -122,15 +122,12 @@ module SonVu
         end
 
         def create_mortise_template(params, origin: Geom::Point3d.new(0, 0, 0))
+          validate_mortise_against_face(params)
           group = Sketchup.active_model.active_entities.add_group
           group.name = MORTISE_GROUP_NAME
 
-          points = translate_points(points_for_dogbone_mortise_profile(params), origin)
-          face = add_polyline_face(group.entities, points)
-          # Mortise represents material to be cut away, so extrude inward from
-          # the placement plane. On selected faces, local -Z maps opposite the
-          # face normal and visually reads as a recess into the board.
-          face.pushpull(-params.fetch(:mortise_depth))
+          points = positioned_mortise_profile_points(params, origin)
+          add_negative_z_profile_solid(group.entities, points, params.fetch(:mortise_depth))
 
           apply_group_material(group, mortise_material)
           mark_generated_group(group)
@@ -138,12 +135,12 @@ module SonVu
         end
 
         def create_mortise_cutter(params, origin: Geom::Point3d.new(0, 0, 0))
+          validate_mortise_against_face(params)
           group = Sketchup.active_model.active_entities.add_group
           group.name = MORTISE_CUTTER_GROUP_NAME
 
-          points = translate_points(points_for_dogbone_mortise_profile(params), origin)
-          face = add_polyline_face(group.entities, points)
-          face.pushpull(-params.fetch(:mortise_depth))
+          points = positioned_mortise_profile_points(params, origin)
+          add_negative_z_profile_solid(group.entities, points, params.fetch(:mortise_depth))
 
           group
         end
@@ -170,6 +167,40 @@ module SonVu
           apply_group_material(group, tenon_material)
           mark_generated_group(group)
           group
+        end
+
+        def positioned_mortise_profile_points(params, origin)
+          profile = normalize_profile_points(points_for_dogbone_mortise_profile(params))
+          min_x = profile.map(&:x).min
+          min_y = profile.map(&:y).min
+          target_x = origin.x + params.fetch(:mortise_offset_x, 0)
+          target_y = origin.y + params.fetch(:mortise_offset_y, 0)
+          translation = Geom::Point3d.new(target_x - min_x, target_y - min_y, origin.z)
+          translate_points(profile, translation)
+        end
+
+        def validate_mortise_against_face(params)
+          depth = params.fetch(:mortise_depth)
+          model_depth = params[:mortise_model_depth]
+          if model_depth&.positive? && depth > model_depth + 0.001
+            raise "Chiều sâu mộng âm vượt quá chiều sâu model (mộng #{format_length_mm(depth)} mm, model #{format_length_mm(model_depth)} mm)."
+          end
+
+          profile = normalize_profile_points(points_for_dogbone_mortise_profile(params))
+          profile_width = profile.map(&:x).max - profile.map(&:x).min
+          profile_height = profile.map(&:y).max - profile.map(&:y).min
+          offset_x = params.fetch(:mortise_offset_x, 0)
+          offset_y = params.fetch(:mortise_offset_y, 0)
+          raise 'Khoảng cách từ hai mép mặt không được nhỏ hơn 0.' if offset_x.negative? || offset_y.negative?
+
+          face_width = params[:mortise_face_width]
+          face_height = params[:mortise_face_height]
+          if face_width&.positive? && offset_x + profile_width > face_width + 0.001
+            raise 'Biên dạng dog-bone theo mép X vượt quá mặt đã chọn.'
+          end
+          if face_height&.positive? && offset_y + profile_height > face_height + 0.001
+            raise 'Biên dạng dog-bone theo mép Y vượt quá mặt đã chọn.'
+          end
         end
 
         def tenon_template_origin(params, origin)
@@ -276,6 +307,7 @@ module SonVu
         end
 
         def add_xz_profile_solid(entities, base_points, thickness)
+          base_points = normalize_profile_points(base_points)
           raise 'Không tạo được khối mộng dương.' if base_points.length < 3
 
           back_points = base_points.map do |point|
@@ -299,6 +331,32 @@ module SonVu
           face_sets.each do |face_points|
             face = entities.add_face(face_points)
             raise 'Không tạo được khối mộng dương.' unless face
+          end
+        end
+
+        def add_negative_z_profile_solid(entities, surface_points, depth)
+          surface_points = normalize_profile_points(surface_points)
+          raise 'Chiều sâu mộng âm phải lớn hơn 0.' unless depth.positive?
+          raise 'Không tạo được khối mộng âm.' if surface_points.length < 3
+
+          recessed_points = surface_points.map do |point|
+            Geom::Point3d.new(point.x, point.y, point.z - depth)
+          end
+
+          face_sets = [surface_points, recessed_points.reverse]
+          surface_points.each_index do |index|
+            next_index = (index + 1) % surface_points.length
+            face_sets << [
+              surface_points[index],
+              recessed_points[index],
+              recessed_points[next_index],
+              surface_points[next_index]
+            ]
+          end
+
+          face_sets.each do |face_points|
+            face = entities.add_face(face_points)
+            raise 'Không tạo được khối mộng âm.' unless face
           end
         end
 
@@ -566,7 +624,7 @@ module SonVu
         end
 
         def add_polyline_face(entities, points)
-          face = entities.add_face(points)
+          face = entities.add_face(normalize_profile_points(points))
           raise 'Không tạo được mặt biên dạng mộng xương chó.' unless face
 
           face
@@ -624,6 +682,12 @@ module SonVu
           points.each_with_object([]) do |point, unique_points|
             unique_points << point unless same_point?(point, unique_points.last)
           end
+        end
+
+        def normalize_profile_points(points)
+          normalized = remove_duplicate_neighbor_points(points)
+          normalized.pop if normalized.length > 1 && same_point?(normalized.first, normalized.last)
+          normalized
         end
 
         def same_point?(first, second)

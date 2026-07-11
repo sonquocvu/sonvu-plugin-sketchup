@@ -117,6 +117,11 @@ module SonVu
             return
           end
 
+          if create_mortise_directly?(params, selected_face)
+            DogboneJoinery::PlacementTool.create_on_face(params, selected_face)
+            return
+          end
+
           Sketchup.active_model.select_tool(DogboneJoinery::PlacementTool.new(params, selected_face, cut_target))
         end
 
@@ -127,9 +132,19 @@ module SonVu
             !params[:cut_mortise_into_selected_solid]
         end
 
+        def create_mortise_directly?(params, selected_face)
+          selected_face &&
+            params[:create_mortise] &&
+            !params[:create_tenon] &&
+            !params[:cut_mortise_into_selected_solid]
+        end
+
         def selected_placement_face
           faces = Sketchup.active_model.selection.grep(Sketchup::Face)
-          return nil if faces.empty?
+          if faces.empty?
+            CNCPlugins::UIHelpers.message('Vui lòng chọn đúng 1 mặt của model trước khi tạo mộng.')
+            return false
+          end
           return faces.first if faces.length == 1
 
           CNCPlugins::UIHelpers.message('Vui lòng chọn đúng 1 mặt phẳng nếu muốn đặt mộng lên mặt gỗ.')

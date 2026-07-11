@@ -19,6 +19,8 @@ module SonVu
           'Rộng mộng âm (mm)',
           'Cao mộng âm (mm)',
           'Sâu mộng âm (mm)',
+          'Khoảng cách từ mép X của mặt (mm)',
+          'Khoảng cách từ mép Y của mặt (mm)',
           'Đường kính dao CNC (mm)',
           'Độ hở lắp ráp (mm)',
           'Khoét góc mộng âm?',
@@ -32,11 +34,14 @@ module SonVu
           'Thêm nhãn?'
         ].freeze
         DOGBONE_STYLES = ['Ngang (T-bone)', 'Dọc (T-bone)', 'Chéo'].freeze
+        DEFAULT_DOGBONE_STYLE = 'Ngang (T-bone)'
         PRESET_NAMES = CNCPlugins::DOGBONE_PRESETS.keys.freeze
         NUMERIC_DEFAULTS_MM = {
-          mortise_width_mm: 80,
+          mortise_width_mm: 20,
           mortise_height_mm: 20,
-          mortise_depth_mm: 18,
+          mortise_depth_mm: 10,
+          mortise_offset_x_mm: 20,
+          mortise_offset_y_mm: 20,
           cutter_diameter_mm: 6,
           clearance_mm: 0.2,
           tenon_width_mm: 40,
@@ -48,9 +53,11 @@ module SonVu
           NUMERIC_DEFAULTS_MM[:mortise_width_mm],
           NUMERIC_DEFAULTS_MM[:mortise_height_mm],
           NUMERIC_DEFAULTS_MM[:mortise_depth_mm],
+          NUMERIC_DEFAULTS_MM[:mortise_offset_x_mm],
+          NUMERIC_DEFAULTS_MM[:mortise_offset_y_mm],
           NUMERIC_DEFAULTS_MM[:cutter_diameter_mm],
           NUMERIC_DEFAULTS_MM[:clearance_mm],
-          DOGBONE_STYLES.first,
+          DEFAULT_DOGBONE_STYLE,
           YES,
           NO,
           NUMERIC_DEFAULTS_MM[:tenon_width_mm],
@@ -62,6 +69,8 @@ module SonVu
         ].freeze
         LISTS = [
           PRESET_NAMES.join('|'),
+          '',
+          '',
           '',
           '',
           '',
@@ -158,11 +167,11 @@ module SonVu
           values = DEFAULTS.dup
           case mode
           when :mortise
-            values[7] = YES
-            values[12] = NO
+            values[9] = YES
+            values[14] = NO
           when :tenon
-            values[7] = NO
-            values[12] = YES
+            values[9] = NO
+            values[14] = YES
           end
           values
         end
@@ -200,21 +209,27 @@ module SonVu
             side_face: false,
             width_mm: nil,
             height_mm: nil,
+            depth_mm: nil,
             width_label: 'Chưa chọn mặt',
-            height_label: 'Chưa chọn mặt'
+            height_label: 'Chưa chọn mặt',
+            depth_label: 'Chưa chọn mặt'
           } unless face
 
           dimensions = face_dimensions(face)
           width_mm = dimensions ? CNCPlugins::Units.model_units_to_millimeters(dimensions[:width]) : nil
           height_mm = dimensions ? CNCPlugins::Units.model_units_to_millimeters(dimensions[:height]) : nil
+          model_depth = face_model_depth(face)
+          depth_mm = model_depth ? CNCPlugins::Units.model_units_to_millimeters(model_depth) : nil
           valid_face = width_mm&.positive? && height_mm&.positive?
           {
             selected: true,
             side_face: valid_face,
             width_mm: width_mm,
             height_mm: height_mm,
+            depth_mm: depth_mm,
             width_label: width_mm&.positive? ? format_mm(width_mm) : 'Không đọc được',
-            height_label: height_mm&.positive? ? "#{format('%.3f', height_mm).sub(/\.?0+$/, '')} mm" : 'Không đọc được'
+            height_label: height_mm&.positive? ? format_mm(height_mm) : 'Không đọc được',
+            depth_label: depth_mm&.positive? ? format_mm(depth_mm) : 'Không đọc được'
           }
         end
 
@@ -255,6 +270,31 @@ module SonVu
           }
         end
 
+        def face_model_depth(face)
+          return nil unless face.respond_to?(:all_connected) && face.respond_to?(:normal)
+
+          connected_entities = face.all_connected + [face]
+          vertices = connected_entities.flat_map do |entity|
+            if entity.respond_to?(:vertices)
+              entity.vertices
+            elsif entity.respond_to?(:position)
+              [entity]
+            else
+              []
+            end
+          end.uniq
+          return nil if vertices.empty?
+
+          normal = Geom::Vector3d.new(face.normal.x, face.normal.y, face.normal.z)
+          return nil if normal.length <= 0.001
+
+          normal.normalize!
+          reference = vertices.first.position
+          projections = vertices.map { |vertex| vector_projection(vertex.position - reference, normal) }
+          depth = projections.max - projections.min
+          depth.positive? ? depth : nil
+        end
+
         def vector_projection(vector, axis)
           (vector.x * axis.x) + (vector.y * axis.y) + (vector.z * axis.z)
         end
@@ -270,17 +310,19 @@ module SonVu
               'mortise_width_mm' => input[1],
               'mortise_height_mm' => input[2],
               'mortise_depth_mm' => input[3],
-              'cutter_diameter_mm' => input[4],
-              'clearance_mm' => input[5],
-              'dogbone_style' => input[6],
-              'create_mortise' => input[7],
-              'cut_mortise_into_selected_solid' => input[8],
-              'tenon_width_mm' => input[9],
-              'tenon_thickness_mm' => input[10],
-              'tenon_edge_offset_mm' => input[11],
-              'create_tenon' => input[12],
-              'tenon_relief_enabled' => input[13],
-              'add_labels' => input[14]
+              'mortise_offset_x_mm' => input[4],
+              'mortise_offset_y_mm' => input[5],
+              'cutter_diameter_mm' => input[6],
+              'clearance_mm' => input[7],
+              'dogbone_style' => input[8],
+              'create_mortise' => input[9],
+              'cut_mortise_into_selected_solid' => input[10],
+              'tenon_width_mm' => input[11],
+              'tenon_thickness_mm' => input[12],
+              'tenon_edge_offset_mm' => input[13],
+              'create_tenon' => input[14],
+              'tenon_relief_enabled' => input[15],
+              'add_labels' => input[16]
             },
             face_context
           )
@@ -294,6 +336,8 @@ module SonVu
             mortise_width_mm: preset_or_manual_value(selected_preset, :mortise_width_mm, input['mortise_width_mm']),
             mortise_height_mm: preset_or_manual_value(selected_preset, :mortise_height_mm, input['mortise_height_mm']),
             mortise_depth_mm: preset_or_manual_value(selected_preset, :mortise_depth_mm, input['mortise_depth_mm']),
+            mortise_offset_x_mm: numeric_value(input['mortise_offset_x_mm']),
+            mortise_offset_y_mm: numeric_value(input['mortise_offset_y_mm']),
             cutter_diameter_mm: preset_or_manual_value(selected_preset, :cutter_diameter_mm, input['cutter_diameter_mm']),
             clearance_mm: preset_or_manual_value(selected_preset, :clearance_mm, input['clearance_mm']),
             dogbone_style: input['dogbone_style'].to_s.strip,
@@ -308,7 +352,10 @@ module SonVu
             tenon_relief_enabled: boolean_value(input['tenon_relief_enabled']),
             add_labels: boolean_value(input['add_labels']),
             selected_face: face_context[:selected],
-            selected_side_face: face_context[:side_face]
+            selected_side_face: face_context[:side_face],
+            selected_face_width_mm: face_context[:width_mm],
+            selected_face_height_mm: face_context[:height_mm],
+            selected_model_depth_mm: face_context[:depth_mm]
           }
         end
 
@@ -323,6 +370,9 @@ module SonVu
           return 'Độ hở lắp ráp không được nhỏ hơn 0.' if values[:clearance_mm].negative?
           return unsupported_style_message(values[:dogbone_style]) unless supported_style?(values[:dogbone_style])
 
+          mortise_error = validate_mortise(values) if values[:create_mortise] || values[:cut_mortise_into_selected_solid]
+          return mortise_error if mortise_error
+
           return validate_tenon(values) if values[:create_tenon]
 
           nil
@@ -333,9 +383,31 @@ module SonVu
             mortise_width_mm
             mortise_height_mm
             mortise_depth_mm
+            mortise_offset_x_mm
+            mortise_offset_y_mm
             cutter_diameter_mm
             clearance_mm
           ].any? { |key| values[key].nil? }
+        end
+
+        def validate_mortise(values)
+          return 'Vui lòng chọn đúng một mặt phẳng của model trước khi tạo mộng âm.' unless values[:selected_face]
+          unless values[:selected_face_width_mm]&.positive? && values[:selected_face_height_mm]&.positive?
+            return 'Không đọc được chiều rộng hoặc chiều cao của mặt đã chọn.'
+          end
+          return 'Không đọc được chiều sâu của model phía sau mặt đã chọn.' unless values[:selected_model_depth_mm]&.positive?
+          return 'Khoảng cách từ hai mép mặt không được nhỏ hơn 0.' if values[:mortise_offset_x_mm].negative? || values[:mortise_offset_y_mm].negative?
+          if values[:mortise_depth_mm] > values[:selected_model_depth_mm] + 0.001
+            return "Chiều sâu mộng âm vượt quá chiều sâu model (mộng #{format_mm(values[:mortise_depth_mm])}, model #{format_mm(values[:selected_model_depth_mm])})."
+          end
+          if values[:mortise_offset_x_mm] + values[:mortise_width_mm] > values[:selected_face_width_mm] + 0.001
+            return 'Khoảng cách mép X cộng chiều rộng mộng âm vượt quá mặt đã chọn.'
+          end
+          if values[:mortise_offset_y_mm] + values[:mortise_height_mm] > values[:selected_face_height_mm] + 0.001
+            return 'Khoảng cách mép Y cộng chiều cao mộng âm vượt quá mặt đã chọn.'
+          end
+
+          nil
         end
 
         def validate_tenon(values)
@@ -370,6 +442,11 @@ module SonVu
             mortise_width: mm_to_length(values[:mortise_width_mm]),
             mortise_height: mm_to_length(values[:mortise_height_mm]),
             mortise_depth: mm_to_length(values[:mortise_depth_mm]),
+            mortise_offset_x: mm_to_length(values[:mortise_offset_x_mm]),
+            mortise_offset_y: mm_to_length(values[:mortise_offset_y_mm]),
+            mortise_face_width: values[:selected_face_width_mm] ? mm_to_length(values[:selected_face_width_mm]) : nil,
+            mortise_face_height: values[:selected_face_height_mm] ? mm_to_length(values[:selected_face_height_mm]) : nil,
+            mortise_model_depth: values[:selected_model_depth_mm] ? mm_to_length(values[:selected_model_depth_mm]) : nil,
             cutter_diameter: mm_to_length(values[:cutter_diameter_mm]),
             clearance: mm_to_length(values[:clearance_mm]),
             tenon_width: mm_to_length(values[:tenon_width_mm] || values[:mortise_width_mm]),
@@ -397,6 +474,8 @@ module SonVu
             "Rộng mộng âm: #{format_length(settings[:mortise_width])} mm",
             "Cao mộng âm: #{format_length(settings[:mortise_height])} mm",
             "Sâu mộng âm: #{format_length(settings[:mortise_depth])} mm",
+            "Khoảng cách mép X: #{format_length(settings[:mortise_offset_x])} mm",
+            "Khoảng cách mép Y: #{format_length(settings[:mortise_offset_y])} mm",
             "Đường kính dao CNC: #{format_length(settings[:cutter_diameter])} mm",
             "Độ hở lắp ráp: #{format_length(settings[:clearance])} mm",
             "Cấu hình mẫu: #{settings[:preset]}",

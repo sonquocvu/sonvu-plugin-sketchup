@@ -83,6 +83,9 @@ module SonVu
           end
 
           def add_face(points)
+            coordinates = points.map { |point| [point.x, point.y, point.z] }
+            raise ArgumentError, 'Duplicate points in array' unless coordinates.uniq.length == coordinates.length
+
             @faces << points
             Object.new
           end
@@ -147,6 +150,103 @@ module SonVu
           assert points.any? { |point| point.x < 79.8 && point.x > 76.7 && point.z > 0 && point.z < 6.1 }
         end
 
+        def test_mortise_solid_is_recessed_below_surface_plane
+          surface_points = [
+            Geom::Point3d.new(0, 0, 0),
+            Geom::Point3d.new(40, 0, 0),
+            Geom::Point3d.new(40, 20, 0),
+            Geom::Point3d.new(0, 20, 0),
+            Geom::Point3d.new(0, 0, 0)
+          ]
+          entities = FakeEntities.new
+
+          Geometry.add_negative_z_profile_solid(entities, surface_points, 18.0)
+
+          all_points = entities.faces.flatten
+          assert_equal 6, entities.faces.length
+          assert_in_delta 0.0, all_points.map(&:z).max, 0.0001
+          assert_in_delta(-18.0, all_points.map(&:z).min, 0.0001)
+          refute all_points.any? { |point| point.z > 0.0001 }
+        end
+
+        def test_profile_normalization_removes_neighbor_and_closing_duplicates
+          first = Geom::Point3d.new(0, 0, 0)
+          second = Geom::Point3d.new(10, 0, 0)
+          third = Geom::Point3d.new(10, 10, 0)
+
+          normalized = Geometry.normalize_profile_points([first, first, second, third, first])
+
+          assert_equal 3, normalized.length
+          assert_same first, normalized.first
+          assert_same third, normalized.last
+        end
+
+        def test_generated_dogbone_mortise_builds_without_duplicate_face_points
+          params = {
+            mortise_width: 40.0,
+            mortise_height: 20.0,
+            cutter_diameter: 6.0,
+            dogbone_style: Geometry::DOGBONE_STYLE_DIAGONAL
+          }
+          profile = Geometry.points_for_dogbone_mortise_profile(params)
+          entities = FakeEntities.new
+
+          Geometry.add_negative_z_profile_solid(entities, profile, 10.0)
+
+          assert_operator entities.faces.length, :>, 2
+          assert entities.faces.flatten.all? { |point| point.z <= 0.0001 }
+        end
+
+        def test_mortise_profile_is_positioned_from_two_face_edges
+          params = {
+            mortise_width: 40.0,
+            mortise_height: 20.0,
+            mortise_depth: 10.0,
+            mortise_offset_x: 5.0,
+            mortise_offset_y: 7.0,
+            mortise_face_width: 100.0,
+            mortise_face_height: 80.0,
+            mortise_model_depth: 15.0,
+            cutter_diameter: 6.0,
+            dogbone_style: Geometry::DOGBONE_STYLE_DIAGONAL
+          }
+
+          points = Geometry.positioned_mortise_profile_points(params, Geom::Point3d.new(0, 0, 0))
+
+          assert_in_delta 5.0, points.map(&:x).min, 0.0001
+          assert_in_delta 7.0, points.map(&:y).min, 0.0001
+          assert_nil Geometry.validate_mortise_against_face(params)
+        end
+
+        def test_mortise_depth_cannot_exceed_model_depth
+          params = {
+            mortise_width: 40.0,
+            mortise_height: 20.0,
+            mortise_depth: 16.0,
+            mortise_offset_x: 5.0,
+            mortise_offset_y: 5.0,
+            mortise_face_width: 100.0,
+            mortise_face_height: 80.0,
+            mortise_model_depth: 15.0,
+            cutter_diameter: 6.0,
+            dogbone_style: Geometry::DOGBONE_STYLE_DIAGONAL
+          }
+
+          error = assert_raises(RuntimeError) { Geometry.validate_mortise_against_face(params) }
+          assert_match(/vượt quá chiều sâu model/, error.message)
+        end
+
+        def test_mortise_recess_rejects_nonpositive_depth
+          entities = FakeEntities.new
+          points = [
+            Geom::Point3d.new(0, 0, 0),
+            Geom::Point3d.new(1, 0, 0),
+            Geom::Point3d.new(0, 1, 0)
+          ]
+
+          assert_raises(RuntimeError) { Geometry.add_negative_z_profile_solid(entities, points, 0) }
+        end
+
         def test_layout_width_is_the_single_finished_tenon_width
           assert_in_delta 79.8, Geometry.tenon_layout_width(base_params), 0.0001
         end
@@ -180,6 +280,12 @@ module SonVu
 
         Vertex = Struct.new(:position)
         Face = Struct.new(:vertices, :edges, :normal)
+        ConnectedEntity = Struct.new(:vertices)
+        DepthFace = Struct.new(:vertices, :normal, :connected_entities) do
+          def all_connected
+            connected_entities
+          end
+        end
 
         class Edge
           attr_reader :start, :end
@@ -200,6 +306,8 @@ module SonVu
             mortise_width_mm: 80.0,
             mortise_height_mm: 20.0,
             mortise_depth_mm: 18.0,
+            mortise_offset_x_mm: 20.0,
+            mortise_offset_y_mm: 20.0,
             cutter_diameter_mm: 6.0,
             clearance_mm: 0.2,
             dogbone_style: 'Chéo',
@@ -214,7 +322,10 @@ module SonVu
             tenon_relief_enabled: true,
             add_labels: false,
             selected_face: true,
-            selected_side_face: true
+            selected_side_face: true,
+            selected_face_width_mm: 100.0,
+            selected_face_height_mm: 80.0,
+            selected_model_depth_mm: 18.0
           }
         end
 
@@ -223,10 +334,32 @@ module SonVu
 
           assert_equal Dialog::PROMPTS.length, Dialog::DEFAULTS.length
           assert_equal Dialog::PROMPTS.length, Dialog::LISTS.length
-          assert_equal 40, values[9]
-          assert_equal 10, values[10]
-          assert_equal 20, values[11]
-          assert_equal Dialog::YES, values[12]
+          assert_equal 40, values[11]
+          assert_equal 10, values[12]
+          assert_equal 20, values[13]
+          assert_equal Dialog::YES, values[14]
+        end
+
+        def test_mortise_defaults_are_20_by_20_by_10_with_horizontal_tbone
+          values = Dialog.defaults_for_mode(:mortise)
+
+          assert_equal 20, values[1]
+          assert_equal 20, values[2]
+          assert_equal 10, values[3]
+          assert_equal 'Ngang (T-bone)', values[8]
+
+          context = {
+            selected: true,
+            side_face: true,
+            width_mm: 100.0,
+            height_mm: 80.0,
+            depth_mm: 18.0,
+            width_label: '100 mm',
+            height_label: '80 mm',
+            depth_label: '18 mm'
+          }
+          html = DogboneJoinery::DialogHTML.html(context, :mortise)
+          assert_match(/value="Ngang \(T-bone\)" checked/, html)
         end
 
         def test_projection_may_be_shorter_than_selected_face_height
@@ -237,6 +370,16 @@ module SonVu
           values = valid_values.merge(tenon_edge_offset_mm: 70.0)
 
           assert_match(/vượt quá chiều rộng mặt đã chọn/, Dialog.validate(values))
+        end
+
+        def test_dialog_rejects_mortise_deeper_than_model
+          values = valid_values.merge(
+            create_mortise: true,
+            create_tenon: false,
+            mortise_depth_mm: 19.0
+          )
+
+          assert_match(/vượt quá chiều sâu model/, Dialog.validate(values))
         end
 
         def test_face_dimensions_are_measured_in_face_axes
@@ -256,14 +399,32 @@ module SonVu
           assert_in_delta 18.0, dimensions[:height], 0.0001
         end
 
+        def test_model_depth_is_measured_perpendicular_to_selected_face
+          front_vertices = [
+            Vertex.new(Geom::Point3d.new(0, 0, 0)),
+            Vertex.new(Geom::Point3d.new(100, 0, 0)),
+            Vertex.new(Geom::Point3d.new(100, 80, 0)),
+            Vertex.new(Geom::Point3d.new(0, 80, 0))
+          ]
+          back_vertices = front_vertices.map do |vertex|
+            Vertex.new(Geom::Point3d.new(vertex.position.x, vertex.position.y, -18))
+          end
+          connected = ConnectedEntity.new(front_vertices + back_vertices)
+          face = DepthFace.new(front_vertices, Geom::Vector3d.new(0, 0, 1), [connected])
+
+          assert_in_delta 18.0, Dialog.face_model_depth(face), 0.0001
+        end
+
         def test_mortise_and_tenon_have_separate_forms
           context = {
             selected: true,
             side_face: true,
             width_mm: 100.0,
             height_mm: 18.0,
+            depth_mm: 25.0,
             width_label: '100 mm',
-            height_label: '18 mm'
+            height_label: '18 mm',
+            depth_label: '25 mm'
           }
 
           tenon_html = DogboneJoinery::DialogHTML.html(context, :tenon)
@@ -275,6 +436,8 @@ module SonVu
           refute_includes tenon_html, 'id="tenon_count"'
           refute_includes tenon_html, 'id="tenon_spacing_mm"'
           assert_includes mortise_html, 'id="mortise_width_mm"'
+          assert_includes mortise_html, 'id="mortise_offset_x_mm"'
+          assert_includes mortise_html, 'id="mortise_offset_y_mm"'
           refute_includes mortise_html, 'id="tenon_width_mm"'
           refute_includes mortise_html, 'id="clearance_mm"'
         end

@@ -13,6 +13,8 @@ module SonVu
           [:mortise_width_mm, 'Rộng mộng âm', 'any'],
           [:mortise_height_mm, 'Cao mộng âm', 'any'],
           [:mortise_depth_mm, 'Sâu mộng âm', 'any'],
+          [:mortise_offset_x_mm, 'Khoảng cách từ mép X', 'any'],
+          [:mortise_offset_y_mm, 'Khoảng cách từ mép Y', 'any'],
           [:cutter_diameter_mm, 'Đường kính dao CNC', 'any']
         ].freeze
 
@@ -417,6 +419,8 @@ module SonVu
                       mortise_width_mm: valueFor('mortise_width_mm'),
                       mortise_height_mm: valueFor('mortise_height_mm'),
                       mortise_depth_mm: valueFor('mortise_depth_mm'),
+                      mortise_offset_x_mm: valueFor('mortise_offset_x_mm'),
+                      mortise_offset_y_mm: valueFor('mortise_offset_y_mm'),
                       cutter_diameter_mm: valueFor('cutter_diameter_mm'),
                       clearance_mm: valueFor('clearance_mm'),
                       dogbone_style: valueFor('dogbone_style'),
@@ -468,9 +472,11 @@ module SonVu
             mortise_width_mm: Dialog::NUMERIC_DEFAULTS_MM.fetch(:mortise_width_mm),
             mortise_height_mm: Dialog::NUMERIC_DEFAULTS_MM.fetch(:mortise_height_mm),
             mortise_depth_mm: Dialog::NUMERIC_DEFAULTS_MM.fetch(:mortise_depth_mm),
+            mortise_offset_x_mm: Dialog::NUMERIC_DEFAULTS_MM.fetch(:mortise_offset_x_mm),
+            mortise_offset_y_mm: Dialog::NUMERIC_DEFAULTS_MM.fetch(:mortise_offset_y_mm),
             cutter_diameter_mm: Dialog::NUMERIC_DEFAULTS_MM.fetch(:cutter_diameter_mm),
             clearance_mm: Dialog::NUMERIC_DEFAULTS_MM.fetch(:clearance_mm),
-            dogbone_style: Dialog::DOGBONE_STYLES.first,
+            dogbone_style: Dialog::DEFAULT_DOGBONE_STYLE,
             create_mortise: mode != :tenon,
             cut_mortise_into_selected_solid: false,
             tenon_width_mm: Dialog::NUMERIC_DEFAULTS_MM.fetch(:tenon_width_mm),
@@ -485,11 +491,11 @@ module SonVu
         def mode_sections(mode, face_context)
           case mode
           when :mortise
-            mortise_section
+            mortise_section(face_context)
           when :tenon
             tenon_section(face_context)
           else
-            mortise_section
+            mortise_section(face_context)
           end
         end
 
@@ -504,13 +510,14 @@ module SonVu
           HTML
         end
 
-        def mortise_section
+        def mortise_section(face_context)
           <<~HTML
             <section class="panel">
               <div class="section-title">
                 <h2>Tạo mộng âm</h2>
                 #{hidden_checked(:create_mortise, true)}
               </div>
+              #{mortise_face_panel(face_context)}
               <div class="grid">
                 #{MORTISE_NUMERIC_FIELDS.map { |field| numeric_field(*field) }.join}
               </div>
@@ -520,11 +527,25 @@ module SonVu
                   #{Dialog::DOGBONE_STYLES.map { |style| segment_field(style) }.join}
                 </div>
               </div>
-              <div class="switch-list block-gap">
-                #{switch_field(:cut_mortise_into_selected_solid, 'Cắt mộng âm vào khối đã chọn', false)}
-              </div>
             </section>
           HTML
+        end
+
+        def mortise_face_panel(face_context)
+          if face_context[:selected]
+            <<~HTML
+              <div class="face-measure">
+                <span class="label">Mặt đã chọn (rộng × cao × sâu model)</span>
+                <strong>#{html_escape(face_context[:width_label])} × #{html_escape(face_context[:height_label])} × #{html_escape(face_context[:depth_label])}</strong>
+              </div>
+            HTML
+          else
+            <<~HTML
+              <div class="face-measure warning">
+                Chưa chọn mặt. Hãy chọn một mặt của model để định vị và kiểm tra chiều sâu mộng âm.
+              </div>
+            HTML
+          end
         end
 
         def tenon_section(face_context)
@@ -564,7 +585,7 @@ module SonVu
         end
 
         def segment_field(style)
-          checked = style == Dialog::DEFAULTS[6] ? ' checked' : ''
+          checked = style == Dialog::DEFAULT_DOGBONE_STYLE ? ' checked' : ''
           <<~HTML
             <label class="segment">
               <input type="radio" name="dogbone_style" value="#{html_escape(style)}"#{checked}>
