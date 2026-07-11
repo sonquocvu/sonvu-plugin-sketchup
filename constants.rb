@@ -15,24 +15,24 @@ module SonVu
     COMMAND_DELETE_GENERATED_TEMPLATES = 'Xóa mẫu mộng đã tạo'
     ATTRIBUTE_DICTIONARY = 'SonVu_CNC_Plugins'
     GENERATED_GROUP_ATTRIBUTE = 'generated_group'
-    COMMON_CUTTER_DIAMETERS_MM = [3, 4, 6, 8].freeze
+    COMMON_CUTTER_RADII_MM = [1.5, 2, 3, 4].freeze
     COMMON_BOARD_THICKNESS_MM = [17, 18, 25].freeze
     DOGBONE_PRESETS = {
       'Tùy chỉnh' => {},
-      'MDF 17mm / dao 6mm' => {
+      'MDF 17mm / bán kính dao 3mm' => {
         mortise_depth_mm: 17,
         tenon_length_mm: 34,
-        cutter_diameter_mm: 6
+        cutter_radius_mm: 3
       },
-      'MDF 18mm / dao 6mm' => {
+      'MDF 18mm / bán kính dao 3mm' => {
         mortise_depth_mm: 18,
         tenon_length_mm: 36,
-        cutter_diameter_mm: 6
+        cutter_radius_mm: 3
       },
-      'Ván ép 18mm / dao 4mm' => {
+      'Ván ép 18mm / bán kính dao 2mm' => {
         mortise_depth_mm: 18,
         tenon_length_mm: 36,
-        cutter_diameter_mm: 4
+        cutter_radius_mm: 2
       }
     }.freeze
   end

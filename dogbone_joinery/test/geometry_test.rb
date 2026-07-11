@@ -52,12 +52,26 @@ module Geom
   end
 end
 
+module Sketchup
+  class << self
+    attr_reader :last_status_text
+
+    def set_status_text(message)
+      @last_status_text = message
+    end
+  end
+end
+
 module SonVu
   module CNCPlugins
     module Units
       module_function
 
       def model_units_to_millimeters(length)
+        length
+      end
+
+      def millimeters_to_model_units(length)
         length
       end
     end
@@ -68,6 +82,8 @@ require_relative '../geometry'
 require_relative '../../constants'
 require_relative '../dialog'
 require_relative '../dialog_html'
+require_relative '../commands'
+require_relative '../tool'
 
 module SonVu
   module CNCPlugins
@@ -91,12 +107,57 @@ module SonVu
           end
         end
 
+        class FakeBackup
+          attr_accessor :name, :hidden
+          attr_reader :attributes
+
+          def initialize
+            @attributes = {}
+          end
+
+          def set_attribute(dictionary, key, value)
+            @attributes[[dictionary, key]] = value
+          end
+        end
+
+        class FakeSolidTarget
+          attr_reader :backup
+
+          def initialize
+            @backup = FakeBackup.new
+          end
+
+          def copy
+            backup
+          end
+        end
+
+        class FakeComponentTarget
+          attr_reader :definition, :transformation
+
+          def initialize
+            @definition = Object.new
+            @transformation = Object.new
+          end
+        end
+
+        class FakeParentEntities
+          attr_reader :definition, :transformation, :backup
+
+          def add_instance(definition, transformation)
+            @definition = definition
+            @transformation = transformation
+            @backup = FakeBackup.new
+          end
+        end
+
         def base_params
           {
             tenon_width: 80.0,
             tenon_height: 18.0,
             tenon_projection: 20.0,
-            cutter_diameter: 6.0,
+            cutter_radius: 3.0,
+            tenon_cutter_radius: 3.0,
             clearance: 0.2,
             tenon_edge_offset: 20.0,
             tenon_face_width: 100.0,
@@ -117,7 +178,7 @@ module SonVu
             origin,
             Geometry.effective_tenon_width(params),
             Geometry.tenon_projection(params),
-            params[:cutter_diameter] / 2.0,
+            params[:cutter_radius],
             params
           )
           entities = FakeEntities.new
@@ -141,13 +202,34 @@ module SonVu
             Geom::Point3d.new(0, 0.1, 0),
             Geometry.effective_tenon_width(params),
             Geometry.tenon_projection(params),
-            params[:cutter_diameter] / 2.0,
+            params[:cutter_radius],
             params
           )
 
           assert points.all? { |point| (point.y - 0.1).abs < 0.0001 }
           assert points.any? { |point| point.x > 0 && point.x < 3.1 && point.z > 0 && point.z < 6.1 }
           assert points.any? { |point| point.x < 79.8 && point.x > 76.7 && point.z > 0 && point.z < 6.1 }
+        end
+
+        def test_tenon_relief_uses_supplied_cutter_radius
+          params = base_params.merge(tenon_cutter_radius: 4.0)
+          radius = Geometry.tenon_cutter_radius(params)
+          points = Geometry.tenon_profile_points(
+            Geom::Point3d.new(0, 0, 0),
+            Geometry.effective_tenon_width(params),
+            Geometry.tenon_projection(params),
+            radius,
+            params
+          )
+          left_relief_points = points.select { |point| point.x < 20 && point.z < 8.1 }
+
+          assert_in_delta 4.0, radius, 0.0001
+          assert_in_delta 4.0, left_relief_points.map(&:x).max, 0.05
+        end
+
+        def test_mortise_uses_radius_and_accepts_legacy_diameter
+          assert_in_delta 3.0, Geometry.mortise_cutter_radius(cutter_radius: 3.0), 0.0001
+          assert_in_delta 3.0, Geometry.mortise_cutter_radius(cutter_diameter: 6.0), 0.0001
         end
 
         def test_mortise_solid_is_recessed_below_surface_plane
@@ -185,7 +267,7 @@ module SonVu
           params = {
             mortise_width: 40.0,
             mortise_height: 20.0,
-            cutter_diameter: 6.0,
+            cutter_radius: 3.0,
             dogbone_style: Geometry::DOGBONE_STYLE_DIAGONAL
           }
           profile = Geometry.points_for_dogbone_mortise_profile(params)
@@ -197,24 +279,22 @@ module SonVu
           assert entities.faces.flatten.all? { |point| point.z <= 0.0001 }
         end
 
-        def test_mortise_profile_is_positioned_from_two_face_edges
+        def test_mortise_profile_is_centered_on_placement_point
           params = {
             mortise_width: 40.0,
             mortise_height: 20.0,
             mortise_depth: 10.0,
-            mortise_offset_x: 5.0,
-            mortise_offset_y: 7.0,
             mortise_face_width: 100.0,
             mortise_face_height: 80.0,
             mortise_model_depth: 15.0,
-            cutter_diameter: 6.0,
+            cutter_radius: 3.0,
             dogbone_style: Geometry::DOGBONE_STYLE_DIAGONAL
           }
 
-          points = Geometry.positioned_mortise_profile_points(params, Geom::Point3d.new(0, 0, 0))
+          points = Geometry.centered_mortise_profile_points(params, Geom::Point3d.new(50, 40, 0))
 
-          assert_in_delta 5.0, points.map(&:x).min, 0.0001
-          assert_in_delta 7.0, points.map(&:y).min, 0.0001
+          assert_in_delta 50.0, (points.map(&:x).min + points.map(&:x).max) / 2.0, 0.0001
+          assert_in_delta 40.0, (points.map(&:y).min + points.map(&:y).max) / 2.0, 0.0001
           assert_nil Geometry.validate_mortise_against_face(params)
         end
 
@@ -223,12 +303,10 @@ module SonVu
             mortise_width: 40.0,
             mortise_height: 20.0,
             mortise_depth: 16.0,
-            mortise_offset_x: 5.0,
-            mortise_offset_y: 5.0,
             mortise_face_width: 100.0,
             mortise_face_height: 80.0,
             mortise_model_depth: 15.0,
-            cutter_diameter: 6.0,
+            cutter_radius: 3.0,
             dogbone_style: Geometry::DOGBONE_STYLE_DIAGONAL
           }
 
@@ -251,8 +329,30 @@ module SonVu
           assert_in_delta 79.8, Geometry.tenon_layout_width(base_params), 0.0001
         end
 
+        def test_single_tenon_is_centered_on_face
+          assert_in_delta 10.1, Geometry.tenon_first_offset(base_params), 0.0001
+          assert_in_delta 0.0, Geometry.tenon_gap(base_params), 0.0001
+        end
+
+        def test_multiple_tenons_are_distributed_with_equal_gaps
+          params = base_params.merge(
+            tenon_width: 40.0,
+            tenon_count: 5,
+            tenon_face_width: 600.0,
+            tenon_edge_offset: 20.0
+          )
+          origin = Geom::Point3d.new(20.0, 0, 0)
+          origins = Geometry.tenon_origins(params, origin)
+
+          assert_in_delta 90.25, Geometry.tenon_gap(params), 0.0001
+          assert_equal 5, origins.length
+          assert_in_delta 20.0, origins.first.x, 0.0001
+          assert_in_delta 540.2, origins.last.x, 0.0001
+          assert_in_delta 20.0, 600.0 - (origins.last.x + Geometry.effective_tenon_width(params)), 0.0001
+        end
+
         def test_layout_rejects_geometry_outside_selected_face
-          params = base_params.merge(tenon_edge_offset: 30.0, tenon_face_width: 100.0)
+          params = base_params.merge(tenon_count: 2, tenon_edge_offset: 30.0, tenon_face_width: 100.0)
 
           error = assert_raises(RuntimeError) { Geometry.validate_tenon_layout(params) }
           assert_match(/vượt quá chiều rộng mặt đã chọn/, error.message)
@@ -272,6 +372,46 @@ module SonVu
           end
 
           assert_match(/không được nhỏ hơn 0/, error.message)
+        end
+
+        def test_tenon_union_backup_is_hidden_and_tagged
+          target = FakeSolidTarget.new
+
+          backup = Geometry.create_tenon_union_backup(target, 'Canh_Tu')
+
+          assert_equal 'SonVu_Backup_Canh_Tu', backup.name
+          assert_equal true, backup.hidden
+          assert_equal true, backup.attributes[[CNCPlugins::ATTRIBUTE_DICTIONARY, 'tenon_union_backup']]
+        end
+
+        def test_component_tenon_union_backup_uses_definition_instance
+          target = FakeComponentTarget.new
+          parent_entities = FakeParentEntities.new
+
+          backup = Geometry.create_tenon_union_backup(
+            target,
+            'Canh_Component',
+            parent_entities: parent_entities
+          )
+
+          assert_same target.definition, parent_entities.definition
+          assert_same target.transformation, parent_entities.transformation
+          assert_same parent_entities.backup, backup
+          assert_equal 'SonVu_Backup_Canh_Component', backup.name
+          assert_equal true, backup.hidden
+          assert_equal true, backup.attributes[[CNCPlugins::ATTRIBUTE_DICTIONARY, 'tenon_union_backup']]
+        end
+
+        def test_tenon_union_overlap_preserves_visible_projection
+          params = base_params
+          union_params, union_origin = Geometry.tenon_union_geometry(
+            params,
+            Geom::Point3d.new(0, 0, 0)
+          )
+
+          assert_in_delta(-0.1, union_origin.z, 0.0001)
+          assert_in_delta 20.1, Geometry.tenon_projection(union_params), 0.0001
+          assert_in_delta 20.0, union_origin.z + Geometry.tenon_projection(union_params), 0.0001
         end
       end
 
@@ -306,9 +446,7 @@ module SonVu
             mortise_width_mm: 80.0,
             mortise_height_mm: 20.0,
             mortise_depth_mm: 18.0,
-            mortise_offset_x_mm: 20.0,
-            mortise_offset_y_mm: 20.0,
-            cutter_diameter_mm: 6.0,
+            cutter_radius_mm: 3.0,
             clearance_mm: 0.2,
             dogbone_style: 'Chéo',
             create_mortise: false,
@@ -317,6 +455,8 @@ module SonVu
             tenon_face_width_mm: 100.0,
             tenon_height_mm: 18.0,
             tenon_thickness_mm: 10.0,
+            tenon_cutter_radius_mm: 3.0,
+            tenon_count: 2,
             tenon_edge_offset_mm: 5.0,
             create_tenon: true,
             tenon_relief_enabled: true,
@@ -334,8 +474,10 @@ module SonVu
 
           assert_equal Dialog::PROMPTS.length, Dialog::DEFAULTS.length
           assert_equal Dialog::PROMPTS.length, Dialog::LISTS.length
-          assert_equal 40, values[11]
-          assert_equal 10, values[12]
+          assert_equal 40, values[9]
+          assert_equal 10, values[10]
+          assert_equal 3, values[11]
+          assert_equal 2, values[12]
           assert_equal 20, values[13]
           assert_equal Dialog::YES, values[14]
         end
@@ -346,7 +488,8 @@ module SonVu
           assert_equal 20, values[1]
           assert_equal 20, values[2]
           assert_equal 10, values[3]
-          assert_equal 'Ngang (T-bone)', values[8]
+          assert_equal 3, values[4]
+          assert_equal 'Ngang (T-bone)', values[6]
 
           context = {
             selected: true,
@@ -362,6 +505,11 @@ module SonVu
           assert_match(/value="Ngang \(T-bone\)" checked/, html)
         end
 
+        def test_presets_store_cutter_radius_values
+          assert_equal 3, CNCPlugins::DOGBONE_PRESETS.fetch('MDF 18mm / bán kính dao 3mm').fetch(:cutter_radius_mm)
+          assert_equal 2, CNCPlugins::DOGBONE_PRESETS.fetch('Ván ép 18mm / bán kính dao 2mm').fetch(:cutter_radius_mm)
+        end
+
         def test_projection_may_be_shorter_than_selected_face_height
           assert_nil Dialog.validate(valid_values)
         end
@@ -370,6 +518,12 @@ module SonVu
           values = valid_values.merge(tenon_edge_offset_mm: 70.0)
 
           assert_match(/vượt quá chiều rộng mặt đã chọn/, Dialog.validate(values))
+        end
+
+        def test_dialog_rejects_nonpositive_tenon_cutter_radius
+          values = valid_values.merge(tenon_cutter_radius_mm: 0.0)
+
+          assert_match(/Bán kính dao/, Dialog.validate(values))
         end
 
         def test_dialog_rejects_mortise_deeper_than_model
@@ -432,14 +586,74 @@ module SonVu
 
           assert_equal 1, tenon_html.scan('id="clearance_mm"').length
           assert_includes tenon_html, '100 mm × 18 mm'
+          assert_includes tenon_html, 'id="tenon_cutter_radius_mm"'
           refute_includes tenon_html, 'id="mortise_width_mm"'
-          refute_includes tenon_html, 'id="tenon_count"'
+          assert_includes tenon_html, 'id="tenon_count"'
+          assert_includes tenon_html, 'hợp khối với group/component solid'
           refute_includes tenon_html, 'id="tenon_spacing_mm"'
           assert_includes mortise_html, 'id="mortise_width_mm"'
-          assert_includes mortise_html, 'id="mortise_offset_x_mm"'
-          assert_includes mortise_html, 'id="mortise_offset_y_mm"'
+          assert_includes mortise_html, 'id="cutter_radius_mm"'
+          refute_includes mortise_html, 'id="cutter_diameter_mm"'
+          assert_equal 1, mortise_html.scan('Bán kính dao').length
+          assert_equal 1, tenon_html.scan('Bán kính dao').length
+          refute_includes mortise_html, 'id="mortise_offset_x_mm"'
+          refute_includes mortise_html, 'id="mortise_offset_y_mm"'
+          assert_includes mortise_html, 'bấm để đặt tâm mộng âm'
           refute_includes mortise_html, 'id="tenon_width_mm"'
           refute_includes mortise_html, 'id="clearance_mm"'
+        end
+      end
+
+      class CommandsTest < Minitest::Test
+        Commands = DogboneJoinery::Commands
+
+        class ValidTarget
+          def manifold?
+            true
+          end
+
+          def union(_other); end
+          def copy; end
+          def transformation; end
+        end
+
+        class InvalidTarget < ValidTarget
+          def manifold?
+            false
+          end
+        end
+
+        class ValidComponentTarget
+          attr_reader :definition
+
+          def initialize
+            @definition = Object.new
+          end
+
+          def manifold?
+            true
+          end
+
+          def union(_other); end
+          def transformation; end
+        end
+
+        def test_tenon_target_must_be_a_backupable_union_capable_solid
+          assert Commands.valid_solid_target?(ValidTarget.new)
+          assert Commands.valid_solid_target?(ValidComponentTarget.new)
+          refute Commands.valid_solid_target?(InvalidTarget.new)
+          refute Commands.valid_solid_target?(Object.new)
+        end
+      end
+
+
+      class PlacementToolTest < Minitest::Test
+        def test_status_text_uses_sketchup_api
+          tool = DogboneJoinery::PlacementTool.allocate
+
+          tool.send(:update_status_text, 'Ready')
+
+          assert_equal 'Ready', Sketchup.last_status_text
         end
       end
     end

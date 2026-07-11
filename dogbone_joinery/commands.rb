@@ -53,7 +53,7 @@ module SonVu
           @create_tenon_command ||= begin
             command = UI::Command.new(CNCPlugins::COMMAND_CREATE_DOGBONE_TENON) { open_dialog(:tenon) }
             command.tooltip = 'Tạo mộng dương'
-            command.status_bar_text = 'Tạo mộng dương theo chiều cao mặt cạnh đã chọn.'
+            command.status_bar_text = 'Tạo và hợp mộng dương vào solid chứa mặt cạnh đã chọn.'
             assign_icon_if_available(command, 'create_dogbone_tenon')
             command
           end
@@ -90,10 +90,12 @@ module SonVu
         def open_dialog(mode)
           selected_face = selected_placement_face
           return if selected_face == false
+          tenon_target = mode == :tenon ? selected_tenon_target : nil
+          return if tenon_target == false
 
           DogboneJoinery::Dialog.show(selected_face: selected_face, mode: mode) do |params|
             begin
-              start_placement_tool(params, selected_face)
+              start_placement_tool(params, selected_face, tenon_target)
             rescue StandardError => e
               CNCPlugins::UIHelpers.message("Không tạo được mẫu mộng xương chó:\n#{e.message}")
             end
@@ -102,7 +104,7 @@ module SonVu
           CNCPlugins::UIHelpers.message("Không tạo được mẫu mộng xương chó:\n#{e.message}")
         end
 
-        def start_placement_tool(params, selected_face)
+        def start_placement_tool(params, selected_face, tenon_target = nil)
           return unless params[:create_mortise] || params[:create_tenon] || params[:cut_mortise_into_selected_solid]
 
           cut_target = nil
@@ -113,12 +115,16 @@ module SonVu
           end
 
           if create_tenon_directly?(params, selected_face)
-            DogboneJoinery::PlacementTool.create_on_face(params, selected_face)
+            return unless confirm_tenon_union
+
+            DogboneJoinery::PlacementTool.integrate_tenons_on_face(params, selected_face, tenon_target)
             return
           end
 
           if create_mortise_directly?(params, selected_face)
-            DogboneJoinery::PlacementTool.create_on_face(params, selected_face)
+            Sketchup.active_model.select_tool(
+              DogboneJoinery::PlacementTool.new(params, selected_face, nil)
+            )
             return
           end
 
@@ -149,6 +155,50 @@ module SonVu
 
           CNCPlugins::UIHelpers.message('Vui lòng chọn đúng 1 mặt phẳng nếu muốn đặt mộng lên mặt gỗ.')
           false
+        end
+
+        def selected_tenon_target
+          model = Sketchup.active_model
+          active_path = model.respond_to?(:active_path) ? model.active_path : nil
+          if active_path.nil? || active_path.empty?
+            CNCPlugins::UIHelpers.message(
+              'Mặt mộng dương phải nằm trong một group hoặc component đang mở để chỉnh sửa. ' \
+              'Hãy mở group/component, chọn mặt cạnh bên trong rồi chạy lại lệnh.'
+            )
+            return false
+          end
+
+          target = active_path.last
+          unless valid_solid_target?(target)
+            CNCPlugins::UIHelpers.message(
+              'Group/component chứa mặt đã chọn chưa phải solid hợp lệ hoặc không hỗ trợ phép hợp khối.'
+            )
+            return false
+          end
+
+          target
+        end
+
+        def valid_solid_target?(target)
+          target &&
+            target.respond_to?(:manifold?) &&
+            target.manifold? &&
+            target.respond_to?(:union) &&
+            backup_supported?(target) &&
+            target.respond_to?(:transformation)
+        end
+
+        def backup_supported?(target)
+          target.respond_to?(:copy) || target.respond_to?(:definition)
+        end
+
+        def confirm_tenon_union
+          result = UI.messagebox(
+            "Lệnh này sẽ hợp mộng dương vào solid đang chỉnh sửa để tạo một chi tiết CNC duy nhất.\n" \
+            "Plugin sẽ giữ một bản sao lưu ẩn và thao tác có thể Undo.\n\nTiếp tục?",
+            ::MB_YESNO
+          )
+          result == ::IDYES
         end
 
         def selected_cut_target

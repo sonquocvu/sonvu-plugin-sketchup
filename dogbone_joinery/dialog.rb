@@ -19,16 +19,16 @@ module SonVu
           'Rộng mộng âm (mm)',
           'Cao mộng âm (mm)',
           'Sâu mộng âm (mm)',
-          'Khoảng cách từ mép X của mặt (mm)',
-          'Khoảng cách từ mép Y của mặt (mm)',
-          'Đường kính dao CNC (mm)',
+          'Bán kính dao (mm)',
           'Độ hở lắp ráp (mm)',
           'Khoét góc mộng âm?',
           'Tạo mộng âm?',
           'Cắt mộng âm vào khối đã chọn?',
           'Rộng mộng dương (mm)',
           'Độ vươn mộng dương từ mặt đã chọn (mm)',
-          'Khoảng cách từ mép cạnh (mm)',
+          'Bán kính dao (mm)',
+          'Số lượng mộng dương',
+          'Lề hai đầu cạnh (mm)',
           'Tạo mộng dương?',
           'Khoét bán nguyệt hai đầu mộng dương?',
           'Thêm nhãn?'
@@ -40,12 +40,12 @@ module SonVu
           mortise_width_mm: 20,
           mortise_height_mm: 20,
           mortise_depth_mm: 10,
-          mortise_offset_x_mm: 20,
-          mortise_offset_y_mm: 20,
-          cutter_diameter_mm: 6,
+          cutter_radius_mm: 3,
           clearance_mm: 0.2,
           tenon_width_mm: 40,
           tenon_thickness_mm: 10,
+          tenon_cutter_radius_mm: 3,
+          tenon_count: 2,
           tenon_edge_offset_mm: 20
         }.freeze
         DEFAULTS = [
@@ -53,15 +53,15 @@ module SonVu
           NUMERIC_DEFAULTS_MM[:mortise_width_mm],
           NUMERIC_DEFAULTS_MM[:mortise_height_mm],
           NUMERIC_DEFAULTS_MM[:mortise_depth_mm],
-          NUMERIC_DEFAULTS_MM[:mortise_offset_x_mm],
-          NUMERIC_DEFAULTS_MM[:mortise_offset_y_mm],
-          NUMERIC_DEFAULTS_MM[:cutter_diameter_mm],
+          NUMERIC_DEFAULTS_MM[:cutter_radius_mm],
           NUMERIC_DEFAULTS_MM[:clearance_mm],
           DEFAULT_DOGBONE_STYLE,
           YES,
           NO,
           NUMERIC_DEFAULTS_MM[:tenon_width_mm],
           NUMERIC_DEFAULTS_MM[:tenon_thickness_mm],
+          NUMERIC_DEFAULTS_MM[:tenon_cutter_radius_mm],
+          NUMERIC_DEFAULTS_MM[:tenon_count],
           NUMERIC_DEFAULTS_MM[:tenon_edge_offset_mm],
           NO,
           YES,
@@ -74,11 +74,11 @@ module SonVu
           '',
           '',
           '',
-          '',
-          '',
           DOGBONE_STYLES.join('|'),
           "#{YES}|#{NO}",
           "#{YES}|#{NO}",
+          '',
+          '',
           '',
           '',
           '',
@@ -167,10 +167,10 @@ module SonVu
           values = DEFAULTS.dup
           case mode
           when :mortise
-            values[9] = YES
+            values[7] = YES
             values[14] = NO
           when :tenon
-            values[9] = NO
+            values[7] = NO
             values[14] = YES
           end
           values
@@ -310,15 +310,15 @@ module SonVu
               'mortise_width_mm' => input[1],
               'mortise_height_mm' => input[2],
               'mortise_depth_mm' => input[3],
-              'mortise_offset_x_mm' => input[4],
-              'mortise_offset_y_mm' => input[5],
-              'cutter_diameter_mm' => input[6],
-              'clearance_mm' => input[7],
-              'dogbone_style' => input[8],
-              'create_mortise' => input[9],
-              'cut_mortise_into_selected_solid' => input[10],
-              'tenon_width_mm' => input[11],
-              'tenon_thickness_mm' => input[12],
+              'cutter_radius_mm' => input[4],
+              'clearance_mm' => input[5],
+              'dogbone_style' => input[6],
+              'create_mortise' => input[7],
+              'cut_mortise_into_selected_solid' => input[8],
+              'tenon_width_mm' => input[9],
+              'tenon_thickness_mm' => input[10],
+              'tenon_cutter_radius_mm' => input[11],
+              'tenon_count' => input[12],
               'tenon_edge_offset_mm' => input[13],
               'create_tenon' => input[14],
               'tenon_relief_enabled' => input[15],
@@ -336,9 +336,7 @@ module SonVu
             mortise_width_mm: preset_or_manual_value(selected_preset, :mortise_width_mm, input['mortise_width_mm']),
             mortise_height_mm: preset_or_manual_value(selected_preset, :mortise_height_mm, input['mortise_height_mm']),
             mortise_depth_mm: preset_or_manual_value(selected_preset, :mortise_depth_mm, input['mortise_depth_mm']),
-            mortise_offset_x_mm: numeric_value(input['mortise_offset_x_mm']),
-            mortise_offset_y_mm: numeric_value(input['mortise_offset_y_mm']),
-            cutter_diameter_mm: preset_or_manual_value(selected_preset, :cutter_diameter_mm, input['cutter_diameter_mm']),
+            cutter_radius_mm: preset_or_manual_value(selected_preset, :cutter_radius_mm, input['cutter_radius_mm']),
             clearance_mm: preset_or_manual_value(selected_preset, :clearance_mm, input['clearance_mm']),
             dogbone_style: input['dogbone_style'].to_s.strip,
             create_mortise: boolean_value(input['create_mortise']),
@@ -347,6 +345,8 @@ module SonVu
             tenon_face_width_mm: face_context[:width_mm],
             tenon_height_mm: face_context[:height_mm],
             tenon_thickness_mm: preset_or_manual_value(selected_preset, :tenon_length_mm, input['tenon_thickness_mm']),
+            tenon_cutter_radius_mm: numeric_value(input['tenon_cutter_radius_mm']),
+            tenon_count: integer_value(input['tenon_count']),
             tenon_edge_offset_mm: numeric_value(input['tenon_edge_offset_mm']),
             create_tenon: boolean_value(input['create_tenon']),
             tenon_relief_enabled: boolean_value(input['tenon_relief_enabled']),
@@ -366,7 +366,7 @@ module SonVu
           return 'Chiều rộng mộng âm phải lớn hơn 0.' unless values[:mortise_width_mm].positive?
           return 'Chiều cao mộng âm phải lớn hơn 0.' unless values[:mortise_height_mm].positive?
           return 'Chiều sâu mộng âm phải lớn hơn 0.' unless values[:mortise_depth_mm].positive?
-          return 'Đường kính dao CNC phải lớn hơn 0.' unless values[:cutter_diameter_mm].positive?
+          return 'Bán kính dao phải lớn hơn 0.' unless values[:cutter_radius_mm].positive?
           return 'Độ hở lắp ráp không được nhỏ hơn 0.' if values[:clearance_mm].negative?
           return unsupported_style_message(values[:dogbone_style]) unless supported_style?(values[:dogbone_style])
 
@@ -383,9 +383,7 @@ module SonVu
             mortise_width_mm
             mortise_height_mm
             mortise_depth_mm
-            mortise_offset_x_mm
-            mortise_offset_y_mm
-            cutter_diameter_mm
+            cutter_radius_mm
             clearance_mm
           ].any? { |key| values[key].nil? }
         end
@@ -396,15 +394,8 @@ module SonVu
             return 'Không đọc được chiều rộng hoặc chiều cao của mặt đã chọn.'
           end
           return 'Không đọc được chiều sâu của model phía sau mặt đã chọn.' unless values[:selected_model_depth_mm]&.positive?
-          return 'Khoảng cách từ hai mép mặt không được nhỏ hơn 0.' if values[:mortise_offset_x_mm].negative? || values[:mortise_offset_y_mm].negative?
           if values[:mortise_depth_mm] > values[:selected_model_depth_mm] + 0.001
             return "Chiều sâu mộng âm vượt quá chiều sâu model (mộng #{format_mm(values[:mortise_depth_mm])}, model #{format_mm(values[:selected_model_depth_mm])})."
-          end
-          if values[:mortise_offset_x_mm] + values[:mortise_width_mm] > values[:selected_face_width_mm] + 0.001
-            return 'Khoảng cách mép X cộng chiều rộng mộng âm vượt quá mặt đã chọn.'
-          end
-          if values[:mortise_offset_y_mm] + values[:mortise_height_mm] > values[:selected_face_height_mm] + 0.001
-            return 'Khoảng cách mép Y cộng chiều cao mộng âm vượt quá mặt đã chọn.'
           end
 
           nil
@@ -417,13 +408,19 @@ module SonVu
           return 'Vui lòng nhập số hợp lệ cho rộng, dày và bố trí mộng dương.' if tenon_values_invalid?(values)
           return 'Rộng mộng dương phải lớn hơn 0.' unless values[:tenon_width_mm].positive?
           return 'Độ vươn mộng dương từ mặt đã chọn phải lớn hơn 0.' unless values[:tenon_thickness_mm].positive?
+          if values[:tenon_relief_enabled] && !values[:tenon_cutter_radius_mm].positive?
+            return 'Bán kính dao phải lớn hơn 0.'
+          end
+          return 'Số lượng mộng dương phải lớn hơn 0.' unless values[:tenon_count].positive?
           return 'Độ hở phải nhỏ hơn rộng và chiều cao mộng dương.' unless values[:clearance_mm] < values[:tenon_width_mm] && values[:clearance_mm] < values[:tenon_height_mm]
           return 'Khoảng cách từ mép cạnh không được nhỏ hơn 0.' if values[:tenon_edge_offset_mm].negative?
 
-          finished_width = values[:tenon_width_mm] - values[:clearance_mm]
-          required_width = values[:tenon_edge_offset_mm] + finished_width
-          if required_width > values[:tenon_face_width_mm] + 0.001
-            return "Bố trí mộng dương vượt quá chiều rộng mặt đã chọn (cần #{format_mm(required_width)}, có #{format_mm(values[:tenon_face_width_mm])})."
+          if values[:tenon_count] > 1
+            finished_width = values[:tenon_width_mm] - values[:clearance_mm]
+            required_width = (values[:tenon_edge_offset_mm] * 2.0) + (finished_width * values[:tenon_count])
+            if required_width > values[:tenon_face_width_mm] + 0.001
+              return "Bố trí mộng dương vượt quá chiều rộng mặt đã chọn (cần tối thiểu #{format_mm(required_width)}, có #{format_mm(values[:tenon_face_width_mm])})."
+            end
           end
 
           nil
@@ -433,6 +430,8 @@ module SonVu
           %i[
             tenon_width_mm
             tenon_thickness_mm
+            tenon_cutter_radius_mm
+            tenon_count
             tenon_edge_offset_mm
           ].any? { |key| values[key].nil? }
         end
@@ -442,12 +441,10 @@ module SonVu
             mortise_width: mm_to_length(values[:mortise_width_mm]),
             mortise_height: mm_to_length(values[:mortise_height_mm]),
             mortise_depth: mm_to_length(values[:mortise_depth_mm]),
-            mortise_offset_x: mm_to_length(values[:mortise_offset_x_mm]),
-            mortise_offset_y: mm_to_length(values[:mortise_offset_y_mm]),
             mortise_face_width: values[:selected_face_width_mm] ? mm_to_length(values[:selected_face_width_mm]) : nil,
             mortise_face_height: values[:selected_face_height_mm] ? mm_to_length(values[:selected_face_height_mm]) : nil,
             mortise_model_depth: values[:selected_model_depth_mm] ? mm_to_length(values[:selected_model_depth_mm]) : nil,
-            cutter_diameter: mm_to_length(values[:cutter_diameter_mm]),
+            cutter_radius: mm_to_length(values[:cutter_radius_mm]),
             clearance: mm_to_length(values[:clearance_mm]),
             tenon_width: mm_to_length(values[:tenon_width_mm] || values[:mortise_width_mm]),
             tenon_face_width: values[:tenon_face_width_mm] ? mm_to_length(values[:tenon_face_width_mm]) : nil,
@@ -456,6 +453,8 @@ module SonVu
             tenon_thickness: mm_to_length(values[:tenon_thickness_mm] || values[:mortise_depth_mm]),
             tenon_projection: mm_to_length(values[:tenon_thickness_mm] || values[:mortise_depth_mm]),
             tenon_length: mm_to_length(values[:tenon_thickness_mm] || values[:mortise_depth_mm]),
+            tenon_cutter_radius: mm_to_length(values[:tenon_cutter_radius_mm] || NUMERIC_DEFAULTS_MM[:tenon_cutter_radius_mm]),
+            tenon_count: values[:tenon_count] || NUMERIC_DEFAULTS_MM[:tenon_count],
             tenon_edge_offset: mm_to_length(values[:tenon_edge_offset_mm] || NUMERIC_DEFAULTS_MM[:tenon_edge_offset_mm]),
             preset: values[:preset],
             dogbone_style: values[:dogbone_style],
@@ -474,9 +473,7 @@ module SonVu
             "Rộng mộng âm: #{format_length(settings[:mortise_width])} mm",
             "Cao mộng âm: #{format_length(settings[:mortise_height])} mm",
             "Sâu mộng âm: #{format_length(settings[:mortise_depth])} mm",
-            "Khoảng cách mép X: #{format_length(settings[:mortise_offset_x])} mm",
-            "Khoảng cách mép Y: #{format_length(settings[:mortise_offset_y])} mm",
-            "Đường kính dao CNC: #{format_length(settings[:cutter_diameter])} mm",
+            "Bán kính dao: #{format_length(settings[:cutter_radius])} mm",
             "Độ hở lắp ráp: #{format_length(settings[:clearance])} mm",
             "Cấu hình mẫu: #{settings[:preset]}",
             "Khoét góc mộng âm: #{settings[:dogbone_style]}",
@@ -486,6 +483,8 @@ module SonVu
             "Rộng mộng dương: #{format_length(settings[:tenon_width])} mm",
             "Độ vươn mộng dương từ mặt đã chọn: #{format_length(settings[:tenon_projection])} mm",
             "Chiều cao mặt đã chọn: #{format_length(settings[:tenon_face_height])} mm",
+            "Bán kính dao: #{format_length(settings[:tenon_cutter_radius])} mm",
+            "Số lượng mộng dương: #{settings[:tenon_count]}",
             "Khoảng cách từ mép cạnh: #{format_length(settings[:tenon_edge_offset])} mm",
             "Thêm nhãn: #{format_boolean(settings[:add_labels])}"
           ]
@@ -496,6 +495,13 @@ module SonVu
           Float(value)
         rescue ArgumentError, TypeError
           nil
+        end
+
+        def integer_value(value)
+          numeric = numeric_value(value)
+          return nil unless numeric && numeric == numeric.to_i
+
+          numeric.to_i
         end
 
         def boolean_value(value)

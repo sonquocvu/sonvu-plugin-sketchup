@@ -13,15 +13,15 @@ module SonVu
           [:mortise_width_mm, 'Rộng mộng âm', 'any'],
           [:mortise_height_mm, 'Cao mộng âm', 'any'],
           [:mortise_depth_mm, 'Sâu mộng âm', 'any'],
-          [:mortise_offset_x_mm, 'Khoảng cách từ mép X', 'any'],
-          [:mortise_offset_y_mm, 'Khoảng cách từ mép Y', 'any'],
-          [:cutter_diameter_mm, 'Đường kính dao CNC', 'any']
+          [:cutter_radius_mm, 'Bán kính dao', 'any']
         ].freeze
 
         TENON_NUMERIC_FIELDS = [
           [:tenon_width_mm, 'Rộng mộng dương', 'any'],
           [:tenon_thickness_mm, 'Độ vươn từ mặt đã chọn', 'any'],
-          [:tenon_edge_offset_mm, 'Khoảng cách từ mép cạnh', 'any']
+          [:tenon_cutter_radius_mm, 'Bán kính dao', 'any'],
+          [:tenon_count, 'Số lượng mộng dương', '1', nil, '1'],
+          [:tenon_edge_offset_mm, 'Lề hai đầu cạnh', 'any']
         ].freeze
 
         module_function
@@ -413,21 +413,42 @@ module SonVu
                     return form.elements[name] ? form.elements[name].checked : DATA.defaults[name];
                   }
 
+                  function updateTenonGap() {
+                    const output = document.getElementById('tenon-gap-value');
+                    if (!output) return;
+
+                    const faceWidth = Number(DATA.tenonFaceWidthMM);
+                    const width = Number(valueFor('tenon_width_mm')) - Number(valueFor('clearance_mm'));
+                    const count = Number(valueFor('tenon_count'));
+                    const margin = Number(valueFor('tenon_edge_offset_mm'));
+                    if (![faceWidth, width, count, margin].every(Number.isFinite) || width <= 0 || count < 1) {
+                      output.textContent = 'Không hợp lệ';
+                      return;
+                    }
+                    if (count === 1) {
+                      output.textContent = 'Một mộng — tự động căn giữa';
+                      return;
+                    }
+
+                    const gap = (faceWidth - (2 * margin) - (count * width)) / (count - 1);
+                    output.textContent = gap < 0 ? 'Không đủ chỗ' : `${gap.toFixed(3).replace(/\\.?0+$/, '')} mm`;
+                  }
+
                   function payload() {
                     return {
                       preset: form.elements.preset.value,
                       mortise_width_mm: valueFor('mortise_width_mm'),
                       mortise_height_mm: valueFor('mortise_height_mm'),
                       mortise_depth_mm: valueFor('mortise_depth_mm'),
-                      mortise_offset_x_mm: valueFor('mortise_offset_x_mm'),
-                      mortise_offset_y_mm: valueFor('mortise_offset_y_mm'),
-                      cutter_diameter_mm: valueFor('cutter_diameter_mm'),
+                      cutter_radius_mm: valueFor('cutter_radius_mm'),
                       clearance_mm: valueFor('clearance_mm'),
                       dogbone_style: valueFor('dogbone_style'),
                       create_mortise: checkedFor('create_mortise'),
                       cut_mortise_into_selected_solid: checkedFor('cut_mortise_into_selected_solid'),
                       tenon_width_mm: valueFor('tenon_width_mm'),
                       tenon_thickness_mm: valueFor('tenon_thickness_mm'),
+                      tenon_cutter_radius_mm: valueFor('tenon_cutter_radius_mm'),
+                      tenon_count: valueFor('tenon_count'),
                       tenon_edge_offset_mm: valueFor('tenon_edge_offset_mm'),
                       create_tenon: checkedFor('create_tenon'),
                       tenon_relief_enabled: checkedFor('tenon_relief_enabled'),
@@ -438,9 +459,14 @@ module SonVu
                   form.elements.preset.addEventListener('change', (event) => {
                     clearError();
                     applyPreset(event.target.value);
+                    updateTenonGap();
                   });
 
-                  form.addEventListener('input', clearError);
+                  form.addEventListener('input', () => {
+                    clearError();
+                    updateTenonGap();
+                  });
+                  updateTenonGap();
 
                   form.addEventListener('submit', (event) => {
                     event.preventDefault();
@@ -462,6 +488,7 @@ module SonVu
             presets: CNCPlugins::DOGBONE_PRESETS,
             mortiseNumericKeys: MORTISE_NUMERIC_FIELDS.map { |field| field[0].to_s },
             selectedSideFace: face_context[:side_face] == true,
+            tenonFaceWidthMM: face_context[:width_mm],
             tenonFaceHeightMM: face_context[:height_mm],
             defaults: defaults_for_payload(mode)
           }
@@ -472,15 +499,15 @@ module SonVu
             mortise_width_mm: Dialog::NUMERIC_DEFAULTS_MM.fetch(:mortise_width_mm),
             mortise_height_mm: Dialog::NUMERIC_DEFAULTS_MM.fetch(:mortise_height_mm),
             mortise_depth_mm: Dialog::NUMERIC_DEFAULTS_MM.fetch(:mortise_depth_mm),
-            mortise_offset_x_mm: Dialog::NUMERIC_DEFAULTS_MM.fetch(:mortise_offset_x_mm),
-            mortise_offset_y_mm: Dialog::NUMERIC_DEFAULTS_MM.fetch(:mortise_offset_y_mm),
-            cutter_diameter_mm: Dialog::NUMERIC_DEFAULTS_MM.fetch(:cutter_diameter_mm),
+            cutter_radius_mm: Dialog::NUMERIC_DEFAULTS_MM.fetch(:cutter_radius_mm),
             clearance_mm: Dialog::NUMERIC_DEFAULTS_MM.fetch(:clearance_mm),
             dogbone_style: Dialog::DEFAULT_DOGBONE_STYLE,
             create_mortise: mode != :tenon,
             cut_mortise_into_selected_solid: false,
             tenon_width_mm: Dialog::NUMERIC_DEFAULTS_MM.fetch(:tenon_width_mm),
             tenon_thickness_mm: Dialog::NUMERIC_DEFAULTS_MM.fetch(:tenon_thickness_mm),
+            tenon_cutter_radius_mm: Dialog::NUMERIC_DEFAULTS_MM.fetch(:tenon_cutter_radius_mm),
+            tenon_count: Dialog::NUMERIC_DEFAULTS_MM.fetch(:tenon_count),
             tenon_edge_offset_mm: Dialog::NUMERIC_DEFAULTS_MM.fetch(:tenon_edge_offset_mm),
             create_tenon: mode == :tenon,
             tenon_relief_enabled: true,
@@ -521,6 +548,9 @@ module SonVu
               <div class="grid">
                 #{MORTISE_NUMERIC_FIELDS.map { |field| numeric_field(*field) }.join}
               </div>
+              <div class="helper-text block-gap">
+                Sau khi xác nhận, di chuyển bản xem trước trên mặt đã chọn và bấm để đặt tâm mộng âm.
+              </div>
               <div class="field full block-gap">
                 <div class="label">Kiểu khoét góc mộng âm</div>
                 <div class="segmented">
@@ -558,6 +588,13 @@ module SonVu
               #{face_height_panel(face_context)}
               <div class="grid block-gap">
                 #{TENON_NUMERIC_FIELDS.map { |field| numeric_field(*field) }.join}
+              </div>
+              <div class="face-measure block-gap">
+                <span class="label">Khoảng cách trống tự động giữa các mộng</span>
+                <strong id="tenon-gap-value">—</strong>
+              </div>
+              <div class="face-measure warning block-gap">
+                Mộng dương sẽ được hợp khối với group/component solid chứa mặt đã chọn để tạo một chi tiết CNC duy nhất.
               </div>
               <div class="switch-list block-gap">
                 #{switch_field(:tenon_relief_enabled, 'Khoét bán nguyệt hai đầu mộng dương', true)}

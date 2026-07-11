@@ -17,6 +17,7 @@ module SonVu
         TEMPLATE_GAP_MM = 10
         LABEL_GAP_MM = 8
         LABEL_LINE_SPACING_MM = 5
+        TENON_UNION_OVERLAP_MM = 0.1
         DOGBONE_ARC_SEGMENTS = 24
         DIAGONAL_CENTER_OFFSET_FACTOR = 0.5
         TBONE_CENTER_OFFSET_FACTOR = 0.65
@@ -87,6 +88,81 @@ module SonVu
           end
         end
 
+        def union_tenons_into_solid(target, params, origin: Geom::Point3d.new(0, 0, 0), transformation: nil)
+          model = Sketchup.active_model
+          model.start_operation('Hợp mộng dương vào chi tiết CNC', true)
+
+          begin
+            raise 'Đối tượng chứa mặt đã chọn không còn hợp lệ.' unless target && target.valid?
+            raise 'Đối tượng chứa mặt đã chọn không phải solid hợp lệ.' unless target.manifold?
+            raise 'Phiên bản SketchUp này không hỗ trợ phép hợp khối.' unless target.respond_to?(:union)
+
+            target.make_unique if target.respond_to?(:make_unique)
+            original_name = target.respond_to?(:name) ? target.name.to_s : ''
+            original_material = target.respond_to?(:material) ? target.material : nil
+            original_layer = target.respond_to?(:layer) ? target.layer : nil
+            backup = create_tenon_union_backup(target, original_name)
+
+            union_params, union_origin = tenon_union_geometry(params, origin)
+            tenons = create_tenon_template(union_params, origin: union_origin)
+            tenons.transform!(transformation) if transformation
+            raise 'Khối mộng dương tạo ra chưa phải solid hợp lệ.' unless tenons.manifold?
+
+            result = target.union(tenons)
+            unless result && result.valid? && result.respond_to?(:manifold?) && result.manifold?
+              raise 'SketchUp không thể hợp mộng dương với chi tiết. Hãy kiểm tra mộng có giao với mặt đã chọn không.'
+            end
+
+            tenons.erase! if tenons.valid? && tenons != result
+            target.erase! if target.valid? && target != result
+            result.name = original_name.empty? ? 'SonVu_CNC_Tenon_Result' : original_name if result.respond_to?(:name=)
+            result.material = original_material if original_material && result.respond_to?(:material=)
+            result.layer = original_layer if original_layer && result.respond_to?(:layer=)
+            result.delete_attribute(
+              CNCPlugins::ATTRIBUTE_DICTIONARY,
+              CNCPlugins::GENERATED_GROUP_ATTRIBUTE
+            ) if result.respond_to?(:delete_attribute)
+
+            model.selection.clear
+            model.selection.add(result)
+            model.commit_operation
+            result
+          rescue StandardError
+            model.abort_operation
+            raise
+          end
+        end
+
+        def create_tenon_union_backup(target, original_name, parent_entities: nil)
+          backup = if target.respond_to?(:copy)
+                     target.copy
+                   elsif target.respond_to?(:definition) && target.respond_to?(:transformation)
+                     entities = parent_entities || Sketchup.active_model.active_entities
+                     entities.add_instance(target.definition, target.transformation)
+                   else
+                     raise 'Không thể tạo bản sao lưu cho group/component chứa mặt đã chọn.'
+                   end
+
+          backup.make_unique if backup.respond_to?(:make_unique)
+          backup.name = "SonVu_Backup_#{original_name.empty? ? 'ChiTietCNC' : original_name}" if backup.respond_to?(:name=)
+          backup.material = target.material if target.respond_to?(:material) && backup.respond_to?(:material=)
+          backup.layer = target.layer if target.respond_to?(:layer) && backup.respond_to?(:layer=)
+          backup.hidden = true if backup.respond_to?(:hidden=)
+          backup.set_attribute(
+            CNCPlugins::ATTRIBUTE_DICTIONARY,
+            'tenon_union_backup',
+            true
+          ) if backup.respond_to?(:set_attribute)
+          backup
+        end
+
+        def tenon_union_geometry(params, origin)
+          overlap = CNCPlugins::Units.millimeters_to_model_units(TENON_UNION_OVERLAP_MM)
+          union_params = params.merge(tenon_projection: tenon_projection(params) + overlap)
+          union_origin = Geom::Point3d.new(origin.x, origin.y, origin.z - overlap)
+          [union_params, union_origin]
+        end
+
         def create_cut_backup(target)
           backup = target.copy
           backup.name = backup_name(target)
@@ -126,7 +202,7 @@ module SonVu
           group = Sketchup.active_model.active_entities.add_group
           group.name = MORTISE_GROUP_NAME
 
-          points = positioned_mortise_profile_points(params, origin)
+          points = centered_mortise_profile_points(params, origin)
           add_negative_z_profile_solid(group.entities, points, params.fetch(:mortise_depth))
 
           apply_group_material(group, mortise_material)
@@ -139,7 +215,7 @@ module SonVu
           group = Sketchup.active_model.active_entities.add_group
           group.name = MORTISE_CUTTER_GROUP_NAME
 
-          points = positioned_mortise_profile_points(params, origin)
+          points = centered_mortise_profile_points(params, origin)
           add_negative_z_profile_solid(group.entities, points, params.fetch(:mortise_depth))
 
           group
@@ -149,7 +225,7 @@ module SonVu
           tenon_width = effective_tenon_width(params)
           tenon_height = effective_tenon_height(params)
           tenon_projection = tenon_projection(params)
-          cutter_radius = params.fetch(:cutter_diameter) / 2.0
+          cutter_radius = tenon_cutter_radius(params)
 
           validate_tenon_clearance(params)
           validate_tenon_dimensions(tenon_width, tenon_height, tenon_projection)
@@ -161,21 +237,25 @@ module SonVu
           group = Sketchup.active_model.active_entities.add_group
           group.name = TENON_GROUP_NAME
 
-          profile = tenon_profile_points(tenon_origin, tenon_width, tenon_projection, cutter_radius, params)
-          add_xz_profile_solid(group.entities, profile, tenon_height)
+          tenon_origins(params, tenon_origin).each do |current_origin|
+            profile = tenon_profile_points(current_origin, tenon_width, tenon_projection, cutter_radius, params)
+            add_xz_profile_solid(group.entities, profile, tenon_height)
+          end
 
           apply_group_material(group, tenon_material)
           mark_generated_group(group)
           group
         end
 
-        def positioned_mortise_profile_points(params, origin)
+        def centered_mortise_profile_points(params, origin = Geom::Point3d.new(0, 0, 0))
           profile = normalize_profile_points(points_for_dogbone_mortise_profile(params))
           min_x = profile.map(&:x).min
+          max_x = profile.map(&:x).max
           min_y = profile.map(&:y).min
-          target_x = origin.x + params.fetch(:mortise_offset_x, 0)
-          target_y = origin.y + params.fetch(:mortise_offset_y, 0)
-          translation = Geom::Point3d.new(target_x - min_x, target_y - min_y, origin.z)
+          max_y = profile.map(&:y).max
+          center_x = (min_x + max_x) / 2.0
+          center_y = (min_y + max_y) / 2.0
+          translation = Geom::Point3d.new(origin.x - center_x, origin.y - center_y, origin.z)
           translate_points(profile, translation)
         end
 
@@ -186,26 +266,12 @@ module SonVu
             raise "Chiều sâu mộng âm vượt quá chiều sâu model (mộng #{format_length_mm(depth)} mm, model #{format_length_mm(model_depth)} mm)."
           end
 
-          profile = normalize_profile_points(points_for_dogbone_mortise_profile(params))
-          profile_width = profile.map(&:x).max - profile.map(&:x).min
-          profile_height = profile.map(&:y).max - profile.map(&:y).min
-          offset_x = params.fetch(:mortise_offset_x, 0)
-          offset_y = params.fetch(:mortise_offset_y, 0)
-          raise 'Khoảng cách từ hai mép mặt không được nhỏ hơn 0.' if offset_x.negative? || offset_y.negative?
-
-          face_width = params[:mortise_face_width]
-          face_height = params[:mortise_face_height]
-          if face_width&.positive? && offset_x + profile_width > face_width + 0.001
-            raise 'Biên dạng dog-bone theo mép X vượt quá mặt đã chọn.'
-          end
-          if face_height&.positive? && offset_y + profile_height > face_height + 0.001
-            raise 'Biên dạng dog-bone theo mép Y vượt quá mặt đã chọn.'
-          end
+          nil
         end
 
         def tenon_template_origin(params, origin)
           base_origin = Geom::Point3d.new(
-            origin.x + tenon_edge_offset(params),
+            origin.x + tenon_first_offset(params),
             origin.y + tenon_vertical_inset(params),
             origin.z
           )
@@ -219,7 +285,15 @@ module SonVu
         end
 
         def tenon_layout_width(params)
-          effective_tenon_width(params)
+          (effective_tenon_width(params) * tenon_count(params)) +
+            (tenon_gap(params) * (tenon_count(params) - 1))
+        end
+
+        def tenon_origins(params, origin)
+          pitch = effective_tenon_width(params) + tenon_gap(params)
+          (0...tenon_count(params)).map do |index|
+            Geom::Point3d.new(origin.x + (index * pitch), origin.y, origin.z)
+          end
         end
 
         def create_labels(params, origin: Geom::Point3d.new(0, 0, 0))
@@ -266,7 +340,7 @@ module SonVu
             "Rộng mộng âm: #{format_length_mm(params.fetch(:mortise_width))} mm",
             "Cao mộng âm: #{format_length_mm(params.fetch(:mortise_height))} mm",
             "Sâu mộng âm: #{format_length_mm(params.fetch(:mortise_depth))} mm",
-            "Đường kính dao CNC: #{format_length_mm(params.fetch(:cutter_diameter))} mm",
+            "Bán kính dao: #{format_length_mm(mortise_cutter_radius(params))} mm",
             "Độ hở lắp ráp: #{format_length_mm(params.fetch(:clearance))} mm"
           ]
         end
@@ -276,7 +350,10 @@ module SonVu
             "Rộng mộng dương: #{format_length_mm(tenon_width)} mm",
             "Độ vươn mộng dương từ mặt đã chọn: #{format_length_mm(tenon_projection(params))} mm",
             "Chiều cao mộng dương sau độ hở: #{format_length_mm(tenon_height)} mm",
-            "Khoảng cách từ mép cạnh: #{format_length_mm(tenon_edge_offset(params))} mm"
+            "Bán kính dao: #{format_length_mm(tenon_cutter_radius(params))} mm",
+            "Số lượng mộng dương: #{tenon_count(params)}",
+            "Lề hai đầu cạnh: #{format_length_mm(tenon_edge_offset(params))} mm",
+            "Khoảng cách trống tự động: #{format_length_mm(tenon_gap(params))} mm"
           ]
         end
 
@@ -291,15 +368,24 @@ module SonVu
         end
 
         def validate_tenon_layout(params)
-          raise 'Khoảng cách từ mép cạnh không được nhỏ hơn 0.' if tenon_edge_offset(params).negative?
+          raise 'Số lượng mộng dương phải lớn hơn 0.' unless tenon_count(params).positive?
+          raise 'Lề hai đầu cạnh không được nhỏ hơn 0.' if tenon_edge_offset(params).negative?
 
           face_width = params[:tenon_face_width]
+          if tenon_count(params) > 1 && !face_width&.positive?
+            raise 'Không đọc được chiều rộng mặt để phân bố nhiều mộng dương.'
+          end
           return unless face_width&.positive?
 
-          required_width = tenon_edge_offset(params) + tenon_layout_width(params)
+          required_width = if tenon_count(params) == 1
+                             effective_tenon_width(params)
+                           else
+                             (tenon_edge_offset(params) * 2.0) +
+                               (effective_tenon_width(params) * tenon_count(params))
+                           end
           return if required_width <= face_width + 0.001
 
-          raise "Bố trí mộng dương vượt quá chiều rộng mặt đã chọn (cần #{format_length_mm(required_width)} mm, có #{format_length_mm(face_width)} mm)."
+          raise "Bố trí mộng dương vượt quá chiều rộng mặt đã chọn (cần tối thiểu #{format_length_mm(required_width)} mm, có #{format_length_mm(face_width)} mm)."
         end
 
         def validate_tenon_relief_dimensions(width, projection, cutter_radius)
@@ -404,13 +490,35 @@ module SonVu
           params.fetch(:tenon_edge_offset, 0)
         end
 
+        def tenon_count(params)
+          params.fetch(:tenon_count, 1).to_i
+        end
+
+        def tenon_first_offset(params)
+          face_width = params[:tenon_face_width]
+          return tenon_edge_offset(params) unless tenon_count(params) == 1 && face_width&.positive?
+
+          (face_width - effective_tenon_width(params)) / 2.0
+        end
+
+        def tenon_gap(params)
+          return 0 if tenon_count(params) <= 1
+
+          face_width = params[:tenon_face_width]
+          return 0 unless face_width&.positive?
+
+          available = face_width - (tenon_edge_offset(params) * 2.0)
+          (available - (effective_tenon_width(params) * tenon_count(params))) /
+            (tenon_count(params) - 1)
+        end
+
         def validate_side_relief_dimensions(tenon_width, tenon_projection, cutter_radius)
           raise 'Bán kính dao phải lớn hơn 0.' unless cutter_radius.positive?
 
           minimum_size = cutter_radius * 2.0
           return if tenon_width > minimum_size && tenon_projection > minimum_size
 
-          raise 'Mộng dương quá hẹp hoặc độ vươn quá ngắn để khoét bán nguyệt ở hai vai theo đường kính dao.'
+          raise 'Mộng dương quá hẹp hoặc độ vươn quá ngắn để khoét bán nguyệt ở hai vai theo bán kính dao.'
         end
 
         def effective_tenon_width(params)
@@ -433,6 +541,16 @@ module SonVu
           params.fetch(:tenon_projection) { params.fetch(:tenon_thickness) }
         end
 
+        def tenon_cutter_radius(params)
+          params.fetch(:tenon_cutter_radius) do
+            params.fetch(:cutter_radius) { params.fetch(:cutter_diameter) / 2.0 }
+          end
+        end
+
+        def mortise_cutter_radius(params)
+          params.fetch(:cutter_radius) { params.fetch(:cutter_diameter) / 2.0 }
+        end
+
         def points_for_dogbone_mortise_profile(params)
           case params.fetch(:dogbone_style, DOGBONE_STYLE_DIAGONAL)
           when DOGBONE_STYLE_DIAGONAL
@@ -449,7 +567,7 @@ module SonVu
         def points_for_diagonal_dogbone(params)
           width = params.fetch(:mortise_width)
           height = params.fetch(:mortise_height)
-          radius = params.fetch(:cutter_diameter) / 2.0
+          radius = mortise_cutter_radius(params)
           offset = diagonal_center_offset(radius)
 
           # Dog-bone geometry:
@@ -474,7 +592,7 @@ module SonVu
         def points_for_horizontal_tbone(params)
           width = params.fetch(:mortise_width)
           height = params.fetch(:mortise_height)
-          radius = params.fetch(:cutter_diameter) / 2.0
+          radius = mortise_cutter_radius(params)
           offset = tbone_center_offset(radius)
 
           # Horizontal T-bone geometry moves each cutter center horizontally
@@ -502,7 +620,7 @@ module SonVu
         def points_for_vertical_tbone(params)
           width = params.fetch(:mortise_width)
           height = params.fetch(:mortise_height)
-          radius = params.fetch(:cutter_diameter) / 2.0
+          radius = mortise_cutter_radius(params)
           offset = tbone_center_offset(radius)
 
           # Vertical T-bone geometry moves each cutter center vertically outward
