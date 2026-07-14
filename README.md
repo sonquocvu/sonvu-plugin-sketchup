@@ -12,6 +12,16 @@ Tài liệu dành cho nhà phát triển và Codex: [`DEVELOPMENT.md`](DEVELOPME
 2. Khởi động lại SketchUp.
 3. Mở menu `Extensions > SonVu CNC Plugins > Mộng CNC`.
 
+### Giấy phép
+
+- Mở `Extensions > SonVu CNC Plugins > Quản lý giấy phép` để xem mã thiết bị,
+  kích hoạt online, dán token đã ký, làm mới hoặc hủy kích hoạt.
+- Bản source hiện chạy ở chế độ phát triển và chưa chặn tính năng. Trước khi
+  phát hành cho khách hàng, chủ plugin phải cấu hình khóa công khai, máy chủ
+  tùy chọn và bật enforcement theo [`LICENSING.md`](LICENSING.md).
+- Lệnh xóa mẫu đã tạo luôn khả dụng để giấy phép không khóa hình học của người
+  dùng trong model.
+
 ### Kiểm tra nhanh trong SketchUp
 
 1. Chọn đúng một lệnh riêng biệt:
@@ -47,4 +57,5 @@ Từ thư mục Plugins, chạy:
 
 ```powershell
 ruby sonvu_cnc_plugins\dogbone_joinery\test\geometry_test.rb
+ruby sonvu_cnc_plugins\shared\licensing\test\license_test.rb
 ```

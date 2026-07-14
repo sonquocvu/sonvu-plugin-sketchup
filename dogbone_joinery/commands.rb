@@ -9,15 +9,15 @@ module SonVu
       module Commands
         module_function
 
-        def register_menu
-          register_menu_items
+        def register_menu(root_menu = nil)
+          register_menu_items(root_menu)
           register_toolbar
         end
 
-        def register_menu_items
+        def register_menu_items(root_menu = nil)
           return if @menu_registered
 
-          root_menu = UI.menu('Extensions').add_submenu(CNCPlugins::PLUGIN_NAME)
+          root_menu ||= CNCPlugins.extension_menu
           dogbone_menu = root_menu.add_submenu(CNCPlugins::MENU_DOGBONE_JOINERY)
           dogbone_menu.add_item(create_mortise_command)
           dogbone_menu.add_item(create_tenon_command)
@@ -88,6 +88,8 @@ module SonVu
         end
 
         def open_dialog(mode)
+          return unless CNCPlugins::Licensing::Manager.require_feature(:dogbone_joinery)
+
           selected_face = selected_placement_face
           return if selected_face == false
           tenon_target = mode == :tenon ? selected_tenon_target : nil
@@ -105,6 +107,7 @@ module SonVu
         end
 
         def start_placement_tool(params, selected_face, tenon_target = nil)
+          return unless CNCPlugins::Licensing::Manager.require_feature(:dogbone_joinery)
           return unless params[:create_mortise] || params[:create_tenon] || params[:cut_mortise_into_selected_solid]
 
           cut_target = nil

@@ -64,6 +64,18 @@ end
 
 module SonVu
   module CNCPlugins
+    module Licensing
+      module Manager
+        class << self
+          attr_accessor :feature_allowed
+
+          def require_feature(_feature)
+            @feature_allowed != false
+          end
+        end
+      end
+    end
+
     module Units
       module_function
 
@@ -643,6 +655,14 @@ module SonVu
           assert Commands.valid_solid_target?(ValidComponentTarget.new)
           refute Commands.valid_solid_target?(InvalidTarget.new)
           refute Commands.valid_solid_target?(Object.new)
+        end
+
+        def test_dogbone_dialog_stops_before_selection_when_license_is_denied
+          CNCPlugins::Licensing::Manager.feature_allowed = false
+
+          assert_nil Commands.open_dialog(:mortise)
+        ensure
+          CNCPlugins::Licensing::Manager.feature_allowed = true
         end
       end
 

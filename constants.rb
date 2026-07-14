@@ -13,6 +13,7 @@ module SonVu
     COMMAND_CREATE_DOGBONE_MORTISE = 'Tạo mộng âm'
     COMMAND_CREATE_DOGBONE_TENON = 'Tạo mộng dương'
     COMMAND_DELETE_GENERATED_TEMPLATES = 'Xóa mẫu mộng đã tạo'
+    COMMAND_LICENSE_MANAGER = 'Quản lý giấy phép'
     ATTRIBUTE_DICTIONARY = 'SonVu_CNC_Plugins'
     GENERATED_GROUP_ATTRIBUTE = 'generated_group'
     COMMON_CUTTER_RADII_MM = [1.5, 2, 3, 4].freeze

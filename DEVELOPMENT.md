@@ -31,6 +31,7 @@ sonvu_cnc_plugins/
     units.rb                         mm/model-unit conversion
     materials.rb                     checking materials
     ui_helpers.rb                    message boxes
+    licensing/                       signed-token licensing client and UI
   dogbone_joinery/
     commands.rb                      commands, toolbar, selection workflow
     dialog.rb                        parsing, validation, settings conversion
@@ -345,7 +346,8 @@ Before distribution:
 
 1. Run tests and syntax checks.
 2. Stage the loader and plugin folder without altering the development tree.
-3. Exclude nested `.git/`, `dogbone_joinery/test/`, and staging artifacts.
+3. Exclude nested `.git/`, `dogbone_joinery/test/`, staging artifacts,
+   `shared/licensing/test/`, and `shared/licensing/tools/`.
 4. Inspect archive paths. Compressing individual files can flatten directories
    and break `require_relative` and icon paths.
 5. Calculate and publish SHA-256.
