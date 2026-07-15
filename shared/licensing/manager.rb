@@ -22,15 +22,65 @@ module SonVu
 
         def status(feature = nil, now: Time.now.to_i)
           return setup_result unless Config::ENFORCEMENT_ENABLED
-          return configuration_result unless public_key_configured?
           return clock_result if clock_rolled_back?(now)
 
           token = stored_token
-          return missing_result if token.empty?
+          return trial_result(now) if token.empty?
+          return configuration_result unless public_key_configured?
 
           result = verify(token, feature, now)
-          write_last_seen(now) if result.valid?
-          result
+          if result.valid?
+            write_last_seen(now)
+            return result
+          end
+
+          trial = trial_result(now)
+          trial.valid? ? trial : result
+        end
+
+        def start_trial(now = Time.now.to_i)
+          return 0 unless Config::ENFORCEMENT_ENABLED
+
+          started_at = trial_started_at
+          return started_at if started_at.positive?
+
+          Sketchup.write_default(
+            Config::PREFERENCES_SECTION,
+            Config::TRIAL_STARTED_AT_PREFERENCE,
+            now.to_i
+          )
+          write_last_seen(now)
+          now.to_i
+        end
+
+        def trial_result(now = Time.now.to_i)
+          started_at = start_trial(now)
+          expires_at = started_at + (Config::TRIAL_DAYS * Config::SECONDS_PER_DAY)
+          payload = {
+            'license_id' => 'TRIAL',
+            'license_type' => 'trial',
+            'features' => ['*'],
+            'issued_at' => started_at,
+            'offline_until' => expires_at
+          }
+
+          if now <= expires_at
+            write_last_seen(now)
+            remaining_days = [((expires_at - now).to_f / Config::SECONDS_PER_DAY).ceil, 0].max
+            return LicenseToken::Result.new(
+              valid: true,
+              state: :trial,
+              message: "Bạn đang dùng thử toàn bộ tính năng. Còn #{remaining_days} ngày.",
+              payload: payload
+            )
+          end
+
+          LicenseToken::Result.new(
+            valid: false,
+            state: :trial_expired,
+            message: 'Thời gian dùng thử 14 ngày đã kết thúc. Vui lòng kích hoạt giấy phép.',
+            payload: payload
+          )
         end
 
         def activate(value)
@@ -77,11 +127,6 @@ module SonVu
 
         def clear_local_license
           write_token('')
-          Sketchup.write_default(
-            Config::PREFERENCES_SECTION,
-            Config::LAST_SEEN_AT_PREFERENCE,
-            0
-          )
         end
 
         def view_model(feature = nil, notice: nil)
@@ -109,6 +154,14 @@ module SonVu
             Config::TOKEN_PREFERENCE,
             ''
           ).to_s.strip
+        end
+
+        def trial_started_at
+          Sketchup.read_default(
+            Config::PREFERENCES_SECTION,
+            Config::TRIAL_STARTED_AT_PREFERENCE,
+            0
+          ).to_i
         end
 
         def public_key_configured?
@@ -202,15 +255,6 @@ module SonVu
             valid: false,
             state: :not_configured,
             message: 'Hệ thống giấy phép chưa được cấu hình đầy đủ.',
-            payload: nil
-          )
-        end
-
-        def missing_result
-          LicenseToken::Result.new(
-            valid: false,
-            state: :missing,
-            message: 'Thiết bị này chưa được kích hoạt.',
             payload: nil
           )
         end

@@ -137,7 +137,7 @@ module SonVu
                       <dt>Khách hàng</dt><dd id="customer">—</dd>
                       <dt>Mã giấy phép</dt><dd id="license-id">—</dd>
                       <dt>Loại</dt><dd id="license-type">—</dd>
-                      <dt>Dùng ngoại tuyến đến</dt><dd id="expires-at">—</dd>
+                      <dt>Có hiệu lực đến</dt><dd id="expires-at">—</dd>
                     </dl>
                   </section>
                   <section class="card">
@@ -164,8 +164,9 @@ module SonVu
                   function text(id, value) { document.getElementById(id).textContent = value || '—'; }
                   function renderStatus(data) {
                     const status = document.getElementById('status');
-                    status.className = `card status ${data.licensed ? 'ok' : ''} ${data.state === 'setup' ? 'setup' : ''}`;
-                    text('state', data.licensed ? (data.state === 'setup' ? 'Chế độ phát triển' : 'Đã kích hoạt') : 'Chưa kích hoạt');
+                    status.className = `card status ${data.licensed ? 'ok' : ''} ${(data.state === 'setup' || data.state === 'trial') ? 'setup' : ''}`;
+                    const activeState = data.state === 'setup' ? 'Chế độ phát triển' : (data.state === 'trial' ? 'Dùng thử 14 ngày' : 'Đã kích hoạt');
+                    text('state', data.licensed ? activeState : (data.state === 'trial_expired' ? 'Đã hết hạn dùng thử' : 'Chưa kích hoạt'));
                     text('message', data.message);
                     text('customer', data.customer);
                     text('license-id', data.license_id);
@@ -173,7 +174,7 @@ module SonVu
                     text('expires-at', data.expires_at);
                     text('device-id', data.device_id);
                     document.getElementById('refresh').disabled = !data.server_configured;
-                    document.getElementById('deactivate').disabled = data.state === 'missing' || data.state === 'setup';
+                    document.getElementById('deactivate').disabled = data.state === 'missing' || data.state === 'setup' || data.state === 'trial' || data.state === 'trial_expired';
                     text('server-hint', data.server_configured ? 'Máy chủ kích hoạt online đã sẵn sàng.' : 'Chưa cấu hình máy chủ online; vẫn có thể nhập token đã ký thủ công sau khi cấu hình khóa công khai.');
                   }
                   document.getElementById('activate').addEventListener('click', () => window.sketchup.activateLicense(document.getElementById('license-value').value));

@@ -30,7 +30,7 @@ end
 module SonVu
   module CNCPlugins
     PLUGIN_ID = 'sonvu_cnc_plugins'
-    VERSION = '0.2.0'
+    VERSION = '0.4.0'
   end
 end
 
@@ -130,6 +130,46 @@ module SonVu
           end
 
           assert_includes error.message, 'shortened 24-character'
+        end
+
+        def test_trial_allows_every_feature_for_fourteen_days
+          result = Manager.status(Config::FEATURE_FURNITURE_BUILDER, now: @now)
+
+          assert result.valid?
+          assert_equal :trial, result.state
+          assert_equal ['*'], result.payload['features']
+          assert_equal @now + (14 * 86_400), result.payload['offline_until']
+          assert_includes result.message, 'Còn 14 ngày'
+        end
+
+        def test_trial_keeps_original_start_time_across_restarts
+          Manager.start_trial(@now)
+
+          assert_equal @now, Manager.start_trial(@now + 86_400)
+          assert_equal @now, Manager.trial_started_at
+        end
+
+        def test_trial_blocks_features_after_fourteen_days
+          Manager.start_trial(@now)
+          result = Manager.trial_result(@now + (14 * 86_400) + 1)
+
+          refute result.valid?
+          assert_equal :trial_expired, result.state
+          assert_includes result.message, '14 ngày'
+        end
+
+        def test_clock_rollback_is_rejected_during_trial
+          Manager.start_trial(@now)
+          rollback_time = @now - Config::CLOCK_ROLLBACK_TOLERANCE_SECONDS - 1
+
+          assert_equal :clock_rollback, Manager.status(nil, now: rollback_time).state
+        end
+
+        def test_default_issuer_features_include_furniture_builder
+          features = Tools::Issuer::DEFAULT_FEATURES.split(',')
+
+          assert_includes features, Config::FEATURE_DOGBONE_JOINERY
+          assert_includes features, Config::FEATURE_FURNITURE_BUILDER
         end
 
         private

@@ -7,6 +7,10 @@ HTTPS activation API is ready.
 
 ## Runtime design
 
+- A local 14-day trial starts the first time the extension loads with
+  enforcement enabled. It grants `features: ["*"]`, so every module is usable.
+- The original trial start is retained across SketchUp restarts. Clock rollback
+  protection also applies during the trial.
 - License checks occur when mortise or tenon creation starts and again before
   a placement tool begins.
 - Cleanup remains available without a license.
@@ -16,6 +20,10 @@ HTTPS activation API is ready.
 - `offline_until` is required. The client attempts an online refresh during the
   final three days or after offline expiry.
 - A clock moving backwards by more than six hours blocks licensed commands.
+
+The local trial is a customer-friendly first layer, not strong anti-tamper
+protection: a determined user who removes SketchUp preferences may reset it.
+Use server-issued trial tokens if reset-resistant trials become necessary.
 
 ## Enable a production build
 
@@ -44,7 +52,7 @@ ruby sonvu_cnc_plugins\shared\licensing\tools\issuer.rb issue `
   C:\Secure\SonVuLicenseKeys\sonvu_license_private.pem `
   CUSTOMER_DEVICE_ID `
   C:\Secure\customer.token `
-  "Customer name" 30 dogbone_joinery
+  "Customer name" 30 dogbone_joinery,furniture_builder
 ```
 
 Send only the `.token` file contents to the customer. They paste it into the
@@ -74,7 +82,7 @@ Required token payload fields:
   "license_id": "SV-123",
   "product_id": "sonvu_cnc_plugins",
   "device_id": "64-character device hash",
-  "features": ["dogbone_joinery"],
+  "features": ["dogbone_joinery", "furniture_builder"],
   "customer_name": "Customer",
   "license_type": "perpetual",
   "issued_at": 1783872000,

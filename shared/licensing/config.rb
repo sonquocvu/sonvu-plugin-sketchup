@@ -9,6 +9,7 @@ module SonVu
       module Config
         PRODUCT_ID = CNCPlugins::PLUGIN_ID
         FEATURE_DOGBONE_JOINERY = 'dogbone_joinery'
+        FEATURE_FURNITURE_BUILDER = 'furniture_builder'
 
         # Leave enforcement disabled during development. Before producing a
         # customer RBZ, configure HTTPS SERVER_URL, embed the RSA public key,
@@ -31,12 +32,15 @@ module SonVu
 
         CONNECT_TIMEOUT_SECONDS = 4
         READ_TIMEOUT_SECONDS = 7
+        TRIAL_DAYS = 14
+        SECONDS_PER_DAY = 24 * 60 * 60
         REFRESH_BEFORE_EXPIRY_SECONDS = 3 * 24 * 60 * 60
         CLOCK_ROLLBACK_TOLERANCE_SECONDS = 6 * 60 * 60
         PREFERENCES_SECTION = CNCPlugins::PLUGIN_ID
         TOKEN_PREFERENCE = 'license_token'
         INSTALLATION_ID_PREFERENCE = 'installation_id'
         LAST_SEEN_AT_PREFERENCE = 'license_last_seen_at'
+        TRIAL_STARTED_AT_PREFERENCE = 'trial_started_at'
       end
     end
   end

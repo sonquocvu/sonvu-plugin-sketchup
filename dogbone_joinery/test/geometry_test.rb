@@ -67,9 +67,10 @@ module SonVu
     module Licensing
       module Manager
         class << self
-          attr_accessor :feature_allowed
+          attr_accessor :feature_allowed, :last_feature
 
-          def require_feature(_feature)
+          def require_feature(feature)
+            @last_feature = feature
             @feature_allowed != false
           end
         end
@@ -661,6 +662,7 @@ module SonVu
           CNCPlugins::Licensing::Manager.feature_allowed = false
 
           assert_nil Commands.open_dialog(:mortise)
+          assert_equal :dogbone_joinery, CNCPlugins::Licensing::Manager.last_feature
         ensure
           CNCPlugins::Licensing::Manager.feature_allowed = true
         end

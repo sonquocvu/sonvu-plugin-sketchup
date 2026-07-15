@@ -22,12 +22,34 @@ require_relative 'dogbone_joinery/dialog_html'
 require_relative 'dogbone_joinery/dialog'
 require_relative 'dogbone_joinery/geometry'
 require_relative 'dogbone_joinery/tool'
+require_relative 'furniture_builder/presets'
+require_relative 'furniture_builder/specification'
+require_relative 'furniture_builder/dialog_html'
+require_relative 'furniture_builder/dialog'
+require_relative 'furniture_builder/geometry'
+require_relative 'furniture_builder/cut_list'
+require_relative 'furniture_builder/cut_list_csv_exporter'
+require_relative 'furniture_builder/sheet_optimizer'
+require_relative 'furniture_builder/sheet_layout_svg'
+require_relative 'furniture_builder/sheet_layout_exporter'
+require_relative 'furniture_builder/sheet_optimization_dialog_html'
+require_relative 'furniture_builder/sheet_optimization_dialog'
+require_relative 'furniture_builder/cost_estimator'
+require_relative 'furniture_builder/cost_estimate_csv_exporter'
+require_relative 'furniture_builder/cost_estimate_dialog_html'
+require_relative 'furniture_builder/cost_estimate_dialog'
+require_relative 'furniture_builder/cut_list_dialog_html'
+require_relative 'furniture_builder/cut_list_dialog'
+require_relative 'furniture_builder/tool'
+require_relative 'furniture_builder/commands'
 
 module SonVu
   module CNCPlugins
     def self.load_extension
+      Licensing::Manager.start_trial
       root_menu = extension_menu
       Licensing::Commands.register_menu(root_menu)
+      FurnitureBuilder::Commands.register_menu(root_menu)
       DogboneJoinery::Commands.register_menu(root_menu)
     end
 

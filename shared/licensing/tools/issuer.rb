@@ -16,7 +16,7 @@ module SonVu
       module Tools
         module Issuer
           PRODUCT_ID = 'sonvu_cnc_plugins'
-          DEFAULT_FEATURE = 'dogbone_joinery'
+          DEFAULT_FEATURES = 'dogbone_joinery,furniture_builder'
           SECONDS_PER_DAY = 86_400
 
           module_function
@@ -68,7 +68,7 @@ module SonVu
             duration_days = Integer(days || 30)
             raise ArgumentError, 'Days must be between 1 and 3660.' unless duration_days.between?(1, 3660)
 
-            feature_list = (features || DEFAULT_FEATURE).split(',').map(&:strip).reject(&:empty?)
+            feature_list = (features || DEFAULT_FEATURES).split(',').map(&:strip).reject(&:empty?)
             raise ArgumentError, 'At least one feature is required.' if feature_list.empty?
 
             password = read_password('Private-key password: ')
@@ -151,7 +151,7 @@ module SonVu
                 ruby issuer.rb init KEY_DIRECTORY
                 ruby issuer.rb issue PRIVATE_KEY DEVICE_ID OUTPUT_TOKEN [CUSTOMER] [DAYS] [FEATURES]
 
-              FEATURES is a comma-separated list; default: dogbone_joinery
+              FEATURES is a comma-separated list; default: dogbone_joinery,furniture_builder
             TEXT
           end
 
