@@ -93,3 +93,41 @@ backtrace:
   C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_planning/preview_session.rb:483:in `handle_ready_for_generation'
   C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_planning/preview_session.rb:545:in `block in configure_dialog'
 === End SVJ-20260716-191627-0244-001 ===
+
+=== SonVu Automatic Joint Diagnostic SVJ-20260716-193535-0244-001 ===
+time=2026-07-16 19:35:35 +0700
+code=mortise_geometry_failed
+error_class=SonVu::CNCPlugins::DogboneJoinery::AutomaticExecution::JointExecutionFailure
+message=Không thể cắt mộng âm tại vị trí đã xem trước. Toàn bộ thay đổi đã được hoàn tác.
+root_detail=Kết quả cắt mộng âm vượt ra ngoài phạm vi chi tiết gốc.
+context={:error_class=>"RuntimeError", :error_message=>"Kết quả cắt mộng âm vượt ra ngoài phạm vi chi tiết gốc.", :execution_role=>"mortise", :connection_id=>"connection:part:77286/75753|part:77286/75754|20480|3297|800|0|0|1000000", :joint_id=>"connection:part:77286/75753|part:77286/75754|20480|3297|800|0|0|1000000:joint:1", :target_part_id=>"part:77286/75753", :target=>{:ruby_class=>"Sketchup::Group", :name=>"Đáy C1", :persistent_id=>75753, :entity_id=>17122, :valid=>true, :manifold=>true, :transformation=>[3.471731448763251, 0.0, 0.0, 0.0, 0.0, 0.9275, 0.0, 0.0, 0.0, 0.0, 1.0294117647058822, 0.0, 0.688976377952756, 0.7480314960629921, 3.149606299212598, 1.0]}, :parameters=>{:mortise_width=>1.5748031496062993, :mortise_height=>0.6889763779527556, :mortise_depth=>0.3937007874015748, :mortise_face_width=>77.36220472440945, :mortise_face_height=>0.6889763779527556, :mortise_model_depth=>0.688976377952756, :cutter_radius=>0.11811023622047245, :clearance=>0.007874015748031498, :dogbone_style=>"Dọc (T-bone)", :create_mortise=>true, :create_tenon=>false, :add_labels=>false}, :placement=>{:center=>[2.263779527559052, 1.092519685039374, 3.149606299212598], :x_axis=>[1.0, 0.0, 0.0], :y_axis=>[0.0, -1.0, 0.0], :z_axis=>[0.0, 0.0, -1.0], :execution_direction=>[0.0, 0.0, 1.0]}}
+backtrace:
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/geometry_adapter.rb:116:in `rescue in generate_mortise'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/geometry_adapter.rb:101:in `generate_mortise'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/executor.rb:67:in `block (2 levels) in execute'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/executor.rb:293:in `with_joint_diagnostic_context'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/executor.rb:66:in `block in execute'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/executor.rb:53:in `each'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/executor.rb:53:in `execute'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_planning/preview_session.rb:483:in `handle_ready_for_generation'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_planning/preview_session.rb:545:in `block in configure_dialog'
+=== End SVJ-20260716-193535-0244-001 ===
+
+=== SonVu Automatic Joint Diagnostic SVJ-20260716-194216-0244-001 ===
+time=2026-07-16 19:42:16 +0700
+code=mortise_geometry_failed
+error_class=SonVu::CNCPlugins::DogboneJoinery::AutomaticExecution::JointExecutionFailure
+message=Không thể cắt mộng âm tại vị trí đã xem trước. Toàn bộ thay đổi đã được hoàn tác.
+root_detail=Kết quả cắt mộng âm vượt ra ngoài phạm vi chi tiết gốc. target_bounds={:min=>[0.688976377952756, 0.7480314960629921, 3.149606299212598], :max=>[78.05118110236221, 22.65748031496063, 3.838582677165354]}; result_bounds={:min=>[1.4763779527559022, 0.5494785064765384, 3.1456692913385824], :max=>[3.0511811023622015, 1.6360926797048845, 3.543307086614173]}; overflow={:below_min=>[0.0, 0.19855298958645373, 0.003937007874015741], :above_max=>[0.0, 0.0, 0.0]}
+context={:error_class=>"RuntimeError", :error_message=>"Kết quả cắt mộng âm vượt ra ngoài phạm vi chi tiết gốc. target_bounds={:min=>[0.688976377952756, 0.7480314960629921, 3.149606299212598], :max=>[78.05118110236221, 22.65748031496063, 3.838582677165354]}; result_bounds={:min=>[1.4763779527559022, 0.5494785064765384, 3.1456692913385824], :max=>[3.0511811023622015, 1.6360926797048845, 3.543307086614173]}; overflow={:below_min=>[0.0, 0.19855298958645373, 0.003937007874015741], :above_max=>[0.0, 0.0, 0.0]}", :execution_role=>"mortise", :connection_id=>"connection:part:77286/75753|part:77286/75754|20480|3297|800|0|0|1000000", :joint_id=>"connection:part:77286/75753|part:77286/75754|20480|3297|800|0|0|1000000:joint:1", :target_part_id=>"part:77286/75753", :target=>{:ruby_class=>"Sketchup::Group", :name=>"Đáy C1", :persistent_id=>75753, :entity_id=>17122, :valid=>true, :manifold=>true, :transformation=>[3.471731448763251, 0.0, 0.0, 0.0, 0.0, 0.9275, 0.0, 0.0, 0.0, 0.0, 1.0294117647058822, 0.0, 0.688976377952756, 0.7480314960629921, 3.149606299212598, 1.0]}, :parameters=>{:mortise_width=>1.5748031496062993, :mortise_height=>0.6889763779527556, :mortise_depth=>0.3937007874015748, :mortise_face_width=>77.36220472440945, :mortise_face_height=>0.6889763779527556, :mortise_model_depth=>0.688976377952756, :cutter_radius=>0.11811023622047245, :clearance=>0.007874015748031498, :dogbone_style=>"Dọc (T-bone)", :create_mortise=>true, :create_tenon=>false, :add_labels=>false}, :placement=>{:center=>[2.263779527559052, 1.092519685039374, 3.149606299212598], :x_axis=>[1.0, 0.0, 0.0], :y_axis=>[0.0, -1.0, 0.0], :z_axis=>[0.0, 0.0, -1.0], :execution_direction=>[0.0, 0.0, 1.0]}}
+backtrace:
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/geometry_adapter.rb:116:in `rescue in generate_mortise'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/geometry_adapter.rb:101:in `generate_mortise'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/executor.rb:67:in `block (2 levels) in execute'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/executor.rb:293:in `with_joint_diagnostic_context'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/executor.rb:66:in `block in execute'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/executor.rb:53:in `each'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/executor.rb:53:in `execute'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_planning/preview_session.rb:483:in `handle_ready_for_generation'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_planning/preview_session.rb:545:in `block in configure_dialog'
+=== End SVJ-20260716-194216-0244-001 ===

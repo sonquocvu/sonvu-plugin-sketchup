@@ -209,16 +209,20 @@ module SonVu
 
         class FakeBooleanEntity
           attr_accessor :layer, :material, :name, :subtract_result, :union_result,
-                        :outer_shell_result
-          attr_reader :erase_count, :persistent_id, :entityID, :outer_shell_count
+                        :outer_shell_result, :volume
+          attr_reader :erase_count, :persistent_id, :entityID, :outer_shell_count,
+                      :subtract_arguments
 
-          def initialize(persistent_id:, entity_id: nil, manifold: true, valid: true)
+          def initialize(persistent_id:, entity_id: nil, manifold: true, valid: true,
+                         volume: nil)
             @persistent_id = persistent_id
             @entityID = entity_id
             @manifold = manifold
             @valid = valid
             @erase_count = 0
             @outer_shell_count = 0
+            @subtract_arguments = []
+            @volume = volume
           end
 
           def valid?
@@ -234,7 +238,8 @@ module SonVu
             @valid = false
           end
 
-          def subtract(_other)
+          def subtract(other)
+            @subtract_arguments << other
             subtract_result
           end
 
@@ -245,6 +250,27 @@ module SonVu
           def outer_shell(_other)
             @outer_shell_count += 1
             outer_shell_result
+          end
+        end
+
+        class FakeBooleanGroup < FakeBooleanEntity
+          attr_accessor :converted_component
+
+          def entities
+            @entities ||= FakeEntities.new
+          end
+
+          def to_component
+            converted_component
+          end
+        end
+
+        class FakeBooleanComponent < FakeBooleanEntity
+          attr_accessor :definition
+
+          def initialize(**arguments)
+            super
+            @definition = Struct.new(:name).new('Part Definition')
           end
         end
 
@@ -605,7 +631,7 @@ module SonVu
           target = FakeBooleanEntity.new(persistent_id: 101, entity_id: 201)
           cutter = FakeBooleanEntity.new(persistent_id: 102, entity_id: 202)
           result = FakeBooleanEntity.new(persistent_id: 102, entity_id: 202)
-          target.subtract_result = result
+          cutter.subtract_result = result
           Sketchup.active_model = Object.new
           params = { mortise_depth: 10.0, mortise_model_depth: 18.0 }
 
@@ -619,6 +645,8 @@ module SonVu
           end
 
           assert_same result, generated
+          assert_equal [target], cutter.subtract_arguments
+          assert_empty target.subtract_arguments
           assert_equal 0, cutter.erase_count
           assert_equal 0, target.erase_count
           assert generated.valid?
@@ -628,7 +656,7 @@ module SonVu
         def test_mortise_boolean_failure_reports_result_and_operand_states
           target = FakeBooleanEntity.new(persistent_id: 101, entity_id: 201)
           cutter = FakeBooleanEntity.new(persistent_id: 102, entity_id: 202)
-          target.subtract_result = nil
+          cutter.subtract_result = nil
           Sketchup.active_model = Object.new
           params = { mortise_depth: 10.0, mortise_model_depth: 18.0 }
 
@@ -726,6 +754,109 @@ module SonVu
           assert_includes error.message, 'outer_shell_result=nil'
           assert_includes error.message, 'persistent_id=101'
           assert_includes error.message, 'persistent_id=102'
+        end
+
+        def test_outer_shell_cannot_report_success_after_dropping_original_target_volume
+          target = FakeBooleanEntity.new(persistent_id: 101, volume: 100.0)
+          tenons = FakeBooleanEntity.new(persistent_id: 102, volume: 10.0)
+          dropped_target = FakeBooleanEntity.new(persistent_id: 103, volume: 10.0)
+          target.union_result = nil
+          target.outer_shell_result = dropped_target
+          Sketchup.active_model = Object.new
+
+          error = assert_raises(RuntimeError) do
+            Geometry.stub(:create_tenon_template, tenons) do
+              Geometry.union_tenons_into_solid(
+                target,
+                base_params,
+                manage_operation: false,
+                create_backup: false,
+                ensure_unique: false,
+                update_selection: false,
+                apply_template_material: false
+              )
+            end
+          end
+
+          assert_includes error.message, 'không bảo toàn thể tích'
+        end
+
+        def test_subtract_cannot_report_success_when_target_volume_is_unchanged
+          target = FakeBooleanEntity.new(persistent_id: 101, volume: 100.0)
+          cutter = FakeBooleanEntity.new(persistent_id: 102, volume: 10.0)
+          unchanged = FakeBooleanEntity.new(persistent_id: 103, volume: 100.0)
+          cutter.subtract_result = unchanged
+          Sketchup.active_model = Object.new
+
+          error = assert_raises(RuntimeError) do
+            Geometry.stub(:create_mortise_cutter, cutter) do
+              Geometry.cut_mortise_into_solid(
+                target,
+                { mortise_depth: 10.0 },
+                manage_operation: false,
+                create_backup: false
+              )
+            end
+          end
+
+          assert_includes error.message, 'không làm giảm thể tích'
+        end
+
+        def test_boolean_result_restores_component_instance_container_type
+          target = FakeBooleanComponent.new(persistent_id: 101)
+          tenons = FakeBooleanEntity.new(persistent_id: 102)
+          group_result = FakeBooleanGroup.new(persistent_id: 103)
+          component_result = FakeBooleanComponent.new(persistent_id: 104)
+          group_result.converted_component = component_result
+          target.union_result = group_result
+          Sketchup.active_model = Object.new
+
+          generated = Geometry.stub(:create_tenon_template, tenons) do
+            Geometry.union_tenons_into_solid(
+              target,
+              base_params,
+              manage_operation: false,
+              create_backup: false,
+              ensure_unique: false,
+              update_selection: false,
+              preserve_target_properties: true,
+              apply_template_material: false
+            )
+          end
+
+          assert_same component_result, generated
+          assert_equal 'Part Definition', component_result.definition.name
+        end
+
+        def test_boolean_sibling_validation_rejects_removed_unrelated_entity
+          sibling = FakeBooleanEntity.new(persistent_id: 901)
+          sibling.erase!
+
+          error = assert_raises(RuntimeError) do
+            Geometry.validate_boolean_siblings!([sibling])
+          end
+
+          assert_includes error.message, 'không phải mục tiêu'
+        end
+
+        def test_boolean_bounds_validation_allows_sketchup_mesh_drift_but_not_material_extension
+          target_bounds = {
+            min: [0.0, 0.0, 0.0],
+            max: [100.0, 20.0, 18.0]
+          }
+          harmless_drift = {
+            min: [-0.2, 0.0, 0.0],
+            max: [100.2, 20.0, 18.0]
+          }
+          material_extension = {
+            min: [-0.3, 0.0, 0.0],
+            max: [100.0, 20.0, 18.0]
+          }
+
+          assert Geometry.boolean_bounds_within?(harmless_drift, target_bounds)
+          refute Geometry.boolean_bounds_within?(material_extension, target_bounds)
+          assert_equal [0.3, 0.0, 0.0],
+                       Geometry.boolean_bounds_overflow(material_extension, target_bounds)[:below_min]
         end
 
         def test_boolean_solid_rejects_nonmanifold_or_invalid_entities

@@ -24,6 +24,9 @@ module SonVu
         MORTISE_FACE_MATCH_TOLERANCE_MM = 0.01
         BOOLEAN_TRANSFORM_EPSILON = 1.0e-8
         BOOLEAN_ORTHOGONAL_TOLERANCE = 1.0e-6
+        BOOLEAN_VOLUME_RELATIVE_TOLERANCE = 1.0e-7
+        BOOLEAN_VOLUME_ABSOLUTE_TOLERANCE = 1.0e-9
+        BOOLEAN_BOUNDS_TOLERANCE_MM = 0.25
         DOGBONE_ARC_SEGMENTS = 24
         DIAGONAL_CENTER_OFFSET_FACTOR = 0.5
         DOGBONE_STYLE_DIAGONAL = 'Chéo'
@@ -88,16 +91,23 @@ module SonVu
               raise 'Khối cắt mộng âm chưa phải solid hợp lệ.'
             end
 
+            protected_siblings = boolean_sibling_snapshot(parent_entities, target, cutter)
+            target_contract = boolean_geometry_contract(target)
             target_before = boolean_entity_diagnostic(target)
             cutter_before = boolean_entity_diagnostic(cutter)
-            result = target.subtract(cutter)
+            # SketchUp defines the argument as the solid that the receiver is
+            # subtracted from, so cutter.subtract(target) produces target-cutter.
+            result = cutter.subtract(target)
             unless boolean_solid?(result)
               raise 'SketchUp subtract không trả về solid hợp lệ. ' \
                     "result=#{boolean_entity_diagnostic(result)}; " \
                     "target_before=#{target_before}; cutter_before=#{cutter_before}"
             end
+            validate_subtract_contract!(result, target_contract)
+            validate_boolean_siblings!(protected_siblings)
 
             if preserve_target_properties
+              result = restore_target_container(result, properties)
               apply_target_properties(result, properties, fallback_name: 'Dogbone_Cut_Result')
             else
               name_boolean_result(result)
@@ -140,6 +150,9 @@ module SonVu
             tenons.transform!(transformation) if transformation
             raise 'Khối mộng dương tạo ra chưa phải solid hợp lệ.' unless tenons.manifold?
 
+            protected_siblings = boolean_sibling_snapshot(parent_entities, target, tenons)
+            target_contract = boolean_geometry_contract(target)
+            tenons_contract = boolean_geometry_contract(tenons)
             target_before = boolean_entity_diagnostic(target)
             tenons_before = boolean_entity_diagnostic(tenons)
             union_result = target.union(tenons)
@@ -156,8 +169,11 @@ module SonVu
                     "outer_shell_result=#{boolean_entity_diagnostic(outer_shell_result)}; " \
                     "target_before=#{target_before}; tenons_before=#{tenons_before}"
             end
+            validate_union_contract!(result, target_contract, tenons_contract)
+            validate_boolean_siblings!(protected_siblings)
 
             if preserve_target_properties
+              result = restore_target_container(result, properties)
               apply_target_properties(result, properties, fallback_name: 'SonVu_CNC_Tenon_Result')
             else
               result.name = original_name.empty? ? 'SonVu_CNC_Tenon_Result' : original_name if result.respond_to?(:name=)
@@ -203,11 +219,173 @@ module SonVu
           values << "valid=#{boolean_diagnostic_value(entity, :valid?)}"
           values << "manifold=#{boolean_diagnostic_value(entity, :manifold?)}"
           values << "persistent_id=#{boolean_diagnostic_value(entity, :persistent_id)}"
+          values << "volume=#{boolean_volume(entity).inspect}"
           bounds = boolean_bounds_diagnostic(entity)
           values << "bounds=#{bounds}" if bounds
           "{#{values.join(', ')}}"
         rescue StandardError => error
           "{diagnostic_error=#{error.class}: #{error.message}}"
+        end
+
+        def boolean_geometry_contract(entity)
+          {
+            volume: boolean_volume(entity),
+            bounds: boolean_bounds_values(entity)
+          }
+        end
+
+        def boolean_volume(entity)
+          return nil unless entity && entity.respond_to?(:volume)
+
+          value = entity.volume
+          return nil unless value.is_a?(Numeric)
+
+          value.to_f.abs
+        rescue StandardError
+          nil
+        end
+
+        def boolean_bounds_values(entity)
+          return nil unless entity && entity.respond_to?(:bounds)
+
+          bounds = entity.bounds
+          minimum = bounds.respond_to?(:min) ? bounds.min : nil
+          maximum = bounds.respond_to?(:max) ? bounds.max : nil
+          return nil unless minimum && maximum
+
+          {
+            min: [minimum.x.to_f, minimum.y.to_f, minimum.z.to_f],
+            max: [maximum.x.to_f, maximum.y.to_f, maximum.z.to_f]
+          }
+        rescue StandardError
+          nil
+        end
+
+        def validate_union_contract!(result, target_contract, tenons_contract)
+          result_contract = boolean_geometry_contract(result)
+          target_volume = target_contract[:volume]
+          tenons_volume = tenons_contract[:volume]
+          result_volume = result_contract[:volume]
+          if target_volume && tenons_volume && result_volume
+            tolerance = boolean_volume_tolerance(target_volume, tenons_volume, result_volume)
+            unless result_volume > target_volume + tolerance &&
+                   result_volume + tolerance >= tenons_volume &&
+                   result_volume <= target_volume + tenons_volume + tolerance
+              raise 'Kết quả hợp mộng dương không bảo toàn thể tích chi tiết gốc.'
+            end
+          end
+
+          expected_bounds = boolean_union_bounds(target_contract[:bounds], tenons_contract[:bounds])
+          unless boolean_bounds_match?(result_contract[:bounds], expected_bounds)
+            raise 'Kết quả hợp mộng dương không bảo toàn phạm vi hình học của chi tiết gốc. ' \
+                  "expected_bounds=#{expected_bounds.inspect}; " \
+                  "result_bounds=#{result_contract[:bounds].inspect}; " \
+                  "delta=#{boolean_bounds_delta(result_contract[:bounds], expected_bounds).inspect}"
+          end
+
+          result
+        end
+
+        def validate_subtract_contract!(result, target_contract)
+          result_contract = boolean_geometry_contract(result)
+          target_volume = target_contract[:volume]
+          result_volume = result_contract[:volume]
+          if target_volume && result_volume
+            tolerance = boolean_volume_tolerance(target_volume, result_volume)
+            unless result_volume.positive? && result_volume < target_volume - tolerance
+              raise 'Kết quả cắt mộng âm không làm giảm thể tích chi tiết nhận mộng.'
+            end
+          end
+          unless boolean_bounds_within?(result_contract[:bounds], target_contract[:bounds])
+            raise 'Kết quả cắt mộng âm vượt ra ngoài phạm vi chi tiết gốc. ' \
+                  "target_bounds=#{target_contract[:bounds].inspect}; " \
+                  "result_bounds=#{result_contract[:bounds].inspect}; " \
+                  "overflow=#{boolean_bounds_overflow(result_contract[:bounds], target_contract[:bounds]).inspect}"
+          end
+
+          result
+        end
+
+        def boolean_volume_tolerance(*values)
+          maximum = values.compact.map(&:abs).max.to_f
+          [maximum * BOOLEAN_VOLUME_RELATIVE_TOLERANCE,
+           BOOLEAN_VOLUME_ABSOLUTE_TOLERANCE].max
+        end
+
+        def boolean_union_bounds(first, second)
+          return nil unless first && second
+
+          {
+            min: first[:min].zip(second[:min]).map(&:min),
+            max: first[:max].zip(second[:max]).map(&:max)
+          }
+        end
+
+        def boolean_bounds_match?(actual, expected)
+          return true unless actual && expected
+
+          tolerance = boolean_bounds_tolerance
+          [:min, :max].all? do |key|
+            actual[key].zip(expected[key]).all? do |actual_value, expected_value|
+              (actual_value - expected_value).abs <= tolerance
+            end
+          end
+        end
+
+        def boolean_bounds_within?(inner, outer)
+          return true unless inner && outer
+
+          tolerance = boolean_bounds_tolerance
+          inner[:min].each_index.all? do |index|
+            inner[:min][index] >= outer[:min][index] - tolerance &&
+              inner[:max][index] <= outer[:max][index] + tolerance
+          end
+        end
+
+        def boolean_bounds_delta(actual, expected)
+          return nil unless actual && expected
+
+          {
+            min: actual[:min].zip(expected[:min]).map { |values| values[0] - values[1] },
+            max: actual[:max].zip(expected[:max]).map { |values| values[0] - values[1] }
+          }
+        end
+
+        def boolean_bounds_overflow(inner, outer)
+          return nil unless inner && outer
+
+          {
+            below_min: inner[:min].zip(outer[:min]).map do |values|
+              [values[1] - values[0], 0.0].max
+            end,
+            above_max: inner[:max].zip(outer[:max]).map do |values|
+              [values[0] - values[1], 0.0].max
+            end
+          }
+        end
+
+        def boolean_bounds_tolerance
+          CNCPlugins::Units.millimeters_to_model_units(BOOLEAN_BOUNDS_TOLERANCE_MM)
+        end
+
+        def boolean_sibling_snapshot(parent_entities, *operands)
+          return [] unless parent_entities && parent_entities.respond_to?(:to_a)
+
+          operand_ids = operands.compact.map(&:object_id)
+          parent_entities.to_a.reject { |entity| operand_ids.include?(entity.object_id) }
+        rescue StandardError
+          []
+        end
+
+        def validate_boolean_siblings!(siblings)
+          removed = siblings.reject do |entity|
+            !entity.respond_to?(:valid?) || entity.valid?
+          rescue StandardError
+            false
+          end
+          return if removed.empty?
+
+          raise "Phép Boolean đã xóa #{removed.length} đối tượng không phải mục tiêu."
         end
 
         def boolean_diagnostic_value(entity, method_name)
@@ -331,9 +509,29 @@ module SonVu
             name: target.respond_to?(:name) ? target.name.to_s : '',
             material: target.respond_to?(:material) ? target.material : nil,
             layer: target.respond_to?(:layer) ? target.layer : nil,
+            container_kind: component_instance_target?(target) ? :component_instance : :group,
+            definition_name: definition && definition.respond_to?(:name) ? definition.name.to_s : '',
             entity_attributes: capture_attributes(target),
             definition_attributes: capture_attributes(definition)
           }
+        end
+
+        def restore_target_container(result, properties)
+          return result unless properties[:container_kind] == :component_instance
+          return result if component_instance_target?(result)
+          unless result.respond_to?(:to_component)
+            raise 'Không thể khôi phục loại ComponentInstance sau phép Boolean.'
+          end
+
+          converted = result.to_component
+          unless converted && (!converted.respond_to?(:valid?) || converted.valid?)
+            raise 'Không thể khôi phục ComponentInstance sau phép Boolean.'
+          end
+          converted
+        end
+
+        def component_instance_target?(entity)
+          entity && entity.respond_to?(:definition) && !entity.respond_to?(:entities)
         end
 
         def apply_target_properties(result, properties, fallback_name:)
@@ -345,6 +543,9 @@ module SonVu
           result.layer = properties[:layer] if properties[:layer] && result.respond_to?(:layer=)
           apply_attributes(result, properties[:entity_attributes])
           definition = result.respond_to?(:definition) ? result.definition : nil
+          if definition && definition.respond_to?(:name=) && !properties[:definition_name].to_s.empty?
+            definition.name = properties[:definition_name]
+          end
           apply_attributes(definition, properties[:definition_attributes])
           result
         end
