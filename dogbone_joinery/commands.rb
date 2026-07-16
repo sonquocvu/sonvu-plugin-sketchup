@@ -19,6 +19,8 @@ module SonVu
 
           root_menu ||= CNCPlugins.extension_menu
           dogbone_menu = root_menu.add_submenu(CNCPlugins::MENU_DOGBONE_JOINERY)
+          dogbone_menu.add_item(automatic_preview_command)
+          dogbone_menu.add_separator
           dogbone_menu.add_item(create_mortise_command)
           dogbone_menu.add_item(create_tenon_command)
           dogbone_menu.add_item(delete_templates_command)
@@ -30,6 +32,8 @@ module SonVu
           return if @toolbar_registered
 
           toolbar = UI::Toolbar.new(CNCPlugins::TOOLBAR_DOGBONE_JOINERY)
+          toolbar.add_item(automatic_preview_command)
+          toolbar.add_separator
           toolbar.add_item(create_mortise_command)
           toolbar.add_item(create_tenon_command)
           toolbar.add_item(delete_templates_command)
@@ -37,6 +41,18 @@ module SonVu
           toolbar.show
 
           @toolbar_registered = true
+        end
+
+        def automatic_preview_command
+          @automatic_preview_command ||= begin
+            command = UI::Command.new(CNCPlugins::COMMAND_AUTOMATIC_JOINT_PREVIEW) do
+              open_automatic_preview
+            end
+            command.tooltip = 'Phân tích và xem trước mộng âm dương tự động'
+            command.status_bar_text = 'Chọn tủ hoặc các chi tiết cần liên kết, sau đó phân tích mộng tự động.'
+            assign_icon_if_available(command, 'automatic_joint_preview')
+            command
+          end
         end
 
         def create_mortise_command
@@ -104,6 +120,15 @@ module SonVu
           end
         rescue StandardError => e
           CNCPlugins::UIHelpers.message("Không tạo được mẫu mộng xương chó:\n#{e.message}")
+        end
+
+        def open_automatic_preview
+          return unless CNCPlugins::Licensing::Manager.require_feature(:dogbone_joinery)
+
+          DogboneJoinery::AutomaticPlanning::PreviewSession.start
+        rescue StandardError => e
+          CNCPlugins::UIHelpers.message("Không mở được xem trước mộng tự động:\n#{e.message}")
+          nil
         end
 
         def start_placement_tool(params, selected_face, tenon_target = nil)

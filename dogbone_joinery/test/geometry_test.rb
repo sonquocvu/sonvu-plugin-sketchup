@@ -93,6 +93,7 @@ end
 
 require_relative '../geometry'
 require_relative '../../constants'
+require_relative '../automatic_planning/loader'
 require_relative '../dialog'
 require_relative '../dialog_html'
 require_relative '../commands'
@@ -176,6 +177,11 @@ module SonVu
             tenon_face_width: 100.0,
             tenon_relief_enabled: true
           }
+        end
+
+        def test_automatic_planning_is_loaded_as_a_non_executing_sibling_layer
+          assert defined?(DogboneJoinery::AutomaticPlanning::Analyzer)
+          refute DogboneJoinery::AutomaticPlanning.const_defined?(:GeometryExecutor, false)
         end
 
         def test_clearance_reduces_total_width_and_height_once
@@ -426,6 +432,44 @@ module SonVu
           assert_in_delta 20.1, Geometry.tenon_projection(union_params), 0.0001
           assert_in_delta 20.0, union_origin.z + Geometry.tenon_projection(union_params), 0.0001
         end
+
+        def test_mortise_cutter_overlap_avoids_coplanar_boolean_and_preserves_depth
+          params = {
+            mortise_depth: 10.0,
+            mortise_model_depth: 18.0
+          }
+          cutter_params, cutter_origin = Geometry.mortise_cut_geometry(
+            params,
+            Geom::Point3d.new(2.0, 3.0, 0.0)
+          )
+
+          assert_in_delta 0.1, cutter_origin.z, 0.0001
+          assert_in_delta 10.1, cutter_params[:mortise_depth], 0.0001
+          assert_in_delta 18.1, cutter_params[:mortise_model_depth], 0.0001
+          assert_in_delta(-10.0, cutter_origin.z - cutter_params[:mortise_depth], 0.0001)
+        end
+
+        def test_manual_vertical_tbone_uses_shared_relief_measurements
+          params = {
+            mortise_width: 20.0,
+            mortise_height: 10.0,
+            cutter_radius: 3.0,
+            dogbone_style: Geometry::DOGBONE_STYLE_VERTICAL_TBONE
+          }
+          centers = VerticalTBoneGeometry.relief_centers(
+            width: 20.0,
+            height: 10.0,
+            radius: 3.0
+          )
+          points = Geometry.points_for_dogbone_mortise_profile(params)
+
+          assert_in_delta(-1.95, centers[:bottom_left][1], 0.0001)
+          assert_in_delta 11.95, centers[:top_right][1], 0.0001
+          assert_operator points.map(&:y).min, :<, 0.0
+          assert_operator points.map(&:y).max, :>, 10.0
+          assert VerticalTBoneGeometry.feasible?(width: 20.0, height: 10.0, radius: 3.0)
+          refute VerticalTBoneGeometry.feasible?(width: 2.0, height: 10.0, radius: 3.0)
+        end
       end
 
       class DialogTest < Minitest::Test
@@ -516,6 +560,15 @@ module SonVu
           }
           html = DogboneJoinery::DialogHTML.html(context, :mortise)
           assert_match(/value="Ngang \(T-bone\)" checked/, html)
+          assert_includes html, 'value="Dọc (T-bone)"'
+          assert_includes html, 'value="Chéo"'
+        end
+
+        def test_manual_tenon_dialog_still_exposes_its_relief_control
+          html = DogboneJoinery::DialogHTML.html({ selected: false }, :tenon)
+
+          assert_includes html, 'tenon_relief_enabled'
+          assert_includes html, 'Khoét bán nguyệt hai đầu mộng dương'
         end
 
         def test_presets_store_cutter_radius_values

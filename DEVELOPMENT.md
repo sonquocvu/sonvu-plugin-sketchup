@@ -36,6 +36,11 @@ Customer-facing commands are intentionally separate:
 - **Tạo mộng dương** creates one or more outward tenons and unions them into the
   solid owning the selected edge face so CNC exporters see one part.
 - **Xóa mẫu mộng đã tạo** deletes groups created and tagged by the plugin.
+- **Tạo mộng tự động** opens a compact Vietnamese bulk-analysis dialog, skips
+  unsafe contacts, previews every valid mortise/tenon pair at once, then creates
+  the finalized valid batch in one atomic SketchUp operation. Its joint length
+  is user-configurable; each tenon/mortise thickness is resolved from that
+  connection's male-board geometry.
 
 Mortise normally generates a separate group. Tenon is an explicitly confirmed
 destructive workflow: it preserves a hidden backup, unions into the selected
@@ -109,9 +114,33 @@ sonvu_cnc_plugins/
     dialog.rb                        parsing, validation, settings conversion
     dialog_html.rb                   HtmlDialog HTML/CSS/JavaScript
     geometry.rb                      profile and solid construction
+    vertical_tbone_geometry.rb       shared pure vertical T-bone cutter measurements
     tool.rb                          selected-face local coordinate frame
+    automatic_planning/             read-only world-space joint analysis and plans
+      geometry_values.rb            pure points, vectors, faces, boards, transforms
+      joint_layout.rb               unit-agnostic fit validation and shared positions
+      joint_dimensions.rb           per-male-board resolved thickness contract
+      preview_plan.rb               immutable/copy-on-write preview representation
+      contact_analysis.rb           planar overlap, classification, assignment, planner
+      sketchup_adapter.rb           read-only nested Group/ComponentInstance scanner
+      preview_settings.rb           strict Vietnamese mm input and unit boundary
+      preview_state.rb              UI state, recalculation, persistence, readiness
+      preview_primitives.rb         pure overlay primitives from shared joint plans
+      preview_session.rb            HtmlDialog/tool/observer lifecycle controller
+      ui/                            local Vietnamese HTML/CSS/JavaScript dialog
+      README.md                     architecture, limits, and executor boundary
+      SKETCHUP_2023_PREVIEW_SMOKE_TEST.md manual runtime checklist
+    automatic_execution/            finalized-plan validation and atomic geometry
+      entity_registry.rb            identity/transform checks and shared-instance isolation
+      transform_adapter.rb          world-to-parent placement conversion
+      geometry_adapter.rb           bridge to existing manual geometry formulas
+      executor.rb                   deterministic one-operation orchestration
+      README.md                     execution policy and repeated-run limitation
     icons/                            production icons
     test/geometry_test.rb             SketchUp-free regression suite
+    test/automatic_planning_test.rb   pure automatic detection/planning regression suite
+    test/automatic_preview_test.rb    UI state/controller/asset regression suite
+    test/automatic_execution_test.rb  atomic executor and fixed-geometry regression suite
 ```
 
 `main.rb` defines dependency order. Runtime startup calls
@@ -369,6 +398,9 @@ Run from the SketchUp Plugins directory:
 
 ```powershell
 ruby sonvu_cnc_plugins\dogbone_joinery\test\geometry_test.rb
+ruby sonvu_cnc_plugins\dogbone_joinery\test\automatic_planning_test.rb
+ruby sonvu_cnc_plugins\dogbone_joinery\test\automatic_preview_test.rb
+ruby sonvu_cnc_plugins\dogbone_joinery\test\automatic_execution_test.rb
 ruby sonvu_cnc_plugins\furniture_builder\test\commands_toolbar_test.rb
 ruby sonvu_cnc_plugins\furniture_builder\test\dashboard_state_test.rb
 ruby sonvu_cnc_plugins\furniture_builder\test\dashboard_html_test.rb
@@ -942,3 +974,89 @@ replaced.
 The package is intentionally controller-neutral. It contains no G-code,
 tool/feed/speed choices, drilling cycles, work-offset selection, setup
 mirroring, or postprocessor assumptions.
+
+## 25. Dogbone automatic-planning contract
+
+`DogboneJoinery::AutomaticPlanning` is a read-only sibling of the existing
+manual mortise/tenon workflow. It never opens a SketchUp operation, writes an
+attribute, generates a group, cuts a solid, or calls the manual geometry
+generators. The existing manual command paths in `Commands`, together with
+`Dialog`, `PlacementTool`, and `Geometry`, remain behaviorally unchanged and
+authoritative for customer-triggered geometry.
+
+`SketchupBoardScanner` accepts only visible, valid Groups and
+ComponentInstances. It recursively descends assemblies, composes nested and
+active-path transformations, and emits world-space `BoardDescriptor` values.
+Instance paths and persistent IDs remain distinct even when component
+definitions are shared. Direct loose Faces and Edges are ignored.
+
+Bounding boxes are broad-phase only. `ContactDetector` requires coplanar face
+polygons and calculates their actual projected intersection. Only
+edge-face-to-broad-face overlap is supported. Edge-to-edge, broad-to-broad,
+line-only, point-only, below-tolerance, and non-contact cases are diagnostics,
+not proposed connections.
+
+Geometry is the default assignment source: the edge-face board is male and the
+broad-face board is female. Reliable `part_role` metadata may produce a
+separate suggestion, especially for cabinet backs, but never silently changes
+the default. T joints are interior contacts; L joints touch the receiving broad
+face boundary and are reversible when the swapped receiver can accept the
+requested joint thickness.
+
+`JointLayoutSpecification` is unit-agnostic. Its caller must convert UI
+millimetres to model units before analysis. `JointLayoutCalculator` preserves
+the requested count, reports maximum feasible count, and creates no partial
+joint instances for an invalid connection. Both mating sides use the same
+axis starts, ends, and center objects.
+
+`PreviewPlan` and its child values remain immutable or copy-on-write so a
+future advanced workflow can reuse them. The compact bulk UI does not expose
+per-connection enablement, joint enablement, selection, or assignment reversal.
+`BulkPreviewAnalyzer` filters the core analyzer result into valid connection
+plans plus lightweight skipped records. A failed connection never produces a
+partial joint list and never blocks unrelated valid connections.
+
+The `Tạo mộng tự động` menu/toolbar command resolves the current selection and
+opens one `UI::HtmlDialog` session per model. The JavaScript layer performs no
+layout calculations; explicit JSON callbacks delegate every recalculation to
+the existing `Analyzer`. All user-facing dimensions are millimetres and are
+converted only by `PreviewSettingsParser`/`PreviewStateSerializer` at the UI
+boundary.
+The dialog never accepts one global joint thickness. `JointDimensionResolver`
+stores the detected male-board thickness, resolved tenon thickness, matching
+mortise opening, total fit clearance and shared local thickness axis in every
+joint plan. Mixed 17/18 mm boards therefore remain distinct through preview and
+execution.
+
+`PreviewOverlayTool` uses only `View#draw` and renders every valid connection at
+once. Solid-line blue tenon prisms and dashed orange mortise cavities remain
+distinguishable without per-joint labels. Invalid and unsupported contacts are
+absent from the viewport and represented only by grouped skipped counts.
+`PreviewDisplaySettings` contains only global tenon, mortise, contact-region,
+and legend visibility.
+
+A model observer and transformation snapshots mark the plan stale after model/edit
+context changes. Closing the dialog, pressing Escape, changing tools, or
+closing the model removes the observer/tool/overlay. `Tạo mộng` snapshots the
+validated plan and settings, disables the dialog, and synchronously calls
+`AutomaticJointGeometryExecutor`.
+
+The executor does not rerun analysis. It validates model identity, persistent
+IDs, stored transformations, settings, placements and duplicates before model
+mutation. It sorts connection/joint IDs, makes only shared selected instances
+and shared active edit contexts unique, maps the stored world placements into
+the solids' parent contexts, then delegates tenon union and mortise subtraction
+to `dogbone_joinery/geometry.rb`. The batch owns one operation; delegated
+geometry uses `manage_operation: false`. Success commits and closes the preview;
+any unexpected failure aborts the whole batch and marks the preview stale.
+
+Automatic mortises are fixed to the existing manual vertical T-bone profile.
+The compact dialog and automatic settings contain no mortise/tenon style
+selector. `VerticalTBoneGeometry` centralizes cutter offset and feasibility for
+the manual profile, board-local preview relief markers, and per-connection
+planning skips. Legacy style fields are accepted as unknown payload data and
+are not persisted. Manual mortise choices are unchanged.
+
+Repeated-run detection is not implemented. See
+`dogbone_joinery/automatic_execution/README.md` and run the adjacent developer
+SketchUp 2023 checklist manually before release.

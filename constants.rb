@@ -25,6 +25,7 @@ module SonVu
     COMMAND_PREVIEW_FURNITURE_MACHINING = 'Xem trước gia công CNC'
     ATTRIBUTE_DICTIONARY = 'SonVu_CNC_Plugins'
     GENERATED_GROUP_ATTRIBUTE = 'generated_group'
+    COMMAND_AUTOMATIC_JOINT_PREVIEW = 'Tạo mộng tự động'
     COMMON_CUTTER_RADII_MM = [1.5, 2, 3, 4].freeze
     COMMON_BOARD_THICKNESS_MM = [17, 18, 25].freeze
     DOGBONE_PRESETS = {

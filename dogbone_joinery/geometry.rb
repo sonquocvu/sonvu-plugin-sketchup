@@ -3,6 +3,8 @@
 # Geometry routines for Dogbone Joinery. The first generator creates standalone
 # grouped templates only and does not modify any selected model geometry.
 
+require_relative 'vertical_tbone_geometry'
+
 module SonVu
   module CNCPlugins
     module DogboneJoinery
@@ -18,9 +20,9 @@ module SonVu
         LABEL_GAP_MM = 8
         LABEL_LINE_SPACING_MM = 5
         TENON_UNION_OVERLAP_MM = 0.1
+        MORTISE_CUT_OVERLAP_MM = 0.1
         DOGBONE_ARC_SEGMENTS = 24
         DIAGONAL_CENTER_OFFSET_FACTOR = 0.5
-        TBONE_CENTER_OFFSET_FACTOR = 0.65
         DOGBONE_STYLE_DIAGONAL = 'Chéo'
         DOGBONE_STYLE_HORIZONTAL_TBONE = 'Ngang (T-bone)'
         DOGBONE_STYLE_VERTICAL_TBONE = 'Dọc (T-bone)'
@@ -64,13 +66,19 @@ module SonVu
           group
         end
 
-        def cut_mortise_into_solid(target, params, origin: Geom::Point3d.new(0, 0, 0), transformation: nil)
+        def cut_mortise_into_solid(target, params, origin: Geom::Point3d.new(0, 0, 0), transformation: nil,
+                                   manage_operation: true, create_backup: true, parent_entities: nil,
+                                   preserve_target_properties: false)
           model = Sketchup.active_model
-          model.start_operation('Cắt mộng âm xương chó vào khối', true)
-
-          begin
-            backup = create_cut_backup(target)
-            cutter = create_mortise_cutter(params, origin: origin)
+          execute_model_operation(model, 'Cắt mộng âm xương chó vào khối', manage_operation) do
+            properties = capture_target_properties(target) if preserve_target_properties
+            create_cut_backup(target) if create_backup
+            cutter_params, cutter_origin = mortise_cut_geometry(params, origin)
+            cutter = create_mortise_cutter(
+              cutter_params,
+              origin: cutter_origin,
+              entities: parent_entities
+            )
             cutter.transform!(transformation) if transformation
 
             result = target.subtract(cutter)
@@ -78,33 +86,45 @@ module SonVu
 
             cutter.erase! if cutter.valid?
             target.erase! if target.valid? && target != result
-            name_boolean_result(result)
+            if preserve_target_properties
+              apply_target_properties(result, properties, fallback_name: 'Dogbone_Cut_Result')
+            else
+              name_boolean_result(result)
+            end
 
-            model.commit_operation
             result
-          rescue StandardError
-            model.abort_operation
-            raise
           end
         end
 
-        def union_tenons_into_solid(target, params, origin: Geom::Point3d.new(0, 0, 0), transformation: nil)
+        def union_tenons_into_solid(target, params, origin: Geom::Point3d.new(0, 0, 0), transformation: nil,
+                                    manage_operation: true, create_backup: true, ensure_unique: true,
+                                    update_selection: true, parent_entities: nil,
+                                    preserve_target_properties: false,
+                                    apply_template_material: true)
           model = Sketchup.active_model
-          model.start_operation('Hợp mộng dương vào chi tiết CNC', true)
-
-          begin
+          execute_model_operation(model, 'Hợp mộng dương vào chi tiết CNC', manage_operation) do
             raise 'Đối tượng chứa mặt đã chọn không còn hợp lệ.' unless target && target.valid?
             raise 'Đối tượng chứa mặt đã chọn không phải solid hợp lệ.' unless target.manifold?
             raise 'Phiên bản SketchUp này không hỗ trợ phép hợp khối.' unless target.respond_to?(:union)
 
-            target.make_unique if target.respond_to?(:make_unique)
+            target.make_unique if ensure_unique && target.respond_to?(:make_unique)
             original_name = target.respond_to?(:name) ? target.name.to_s : ''
             original_material = target.respond_to?(:material) ? target.material : nil
             original_layer = target.respond_to?(:layer) ? target.layer : nil
-            backup = create_tenon_union_backup(target, original_name)
+            properties = capture_target_properties(target) if preserve_target_properties
+            create_tenon_union_backup(
+              target,
+              original_name,
+              parent_entities: parent_entities
+            ) if create_backup
 
             union_params, union_origin = tenon_union_geometry(params, origin)
-            tenons = create_tenon_template(union_params, origin: union_origin)
+            tenons = create_tenon_template(
+              union_params,
+              origin: union_origin,
+              entities: parent_entities,
+              apply_material: apply_template_material
+            )
             tenons.transform!(transformation) if transformation
             raise 'Khối mộng dương tạo ra chưa phải solid hợp lệ.' unless tenons.manifold?
 
@@ -115,21 +135,80 @@ module SonVu
 
             tenons.erase! if tenons.valid? && tenons != result
             target.erase! if target.valid? && target != result
-            result.name = original_name.empty? ? 'SonVu_CNC_Tenon_Result' : original_name if result.respond_to?(:name=)
-            result.material = original_material if original_material && result.respond_to?(:material=)
-            result.layer = original_layer if original_layer && result.respond_to?(:layer=)
+            if preserve_target_properties
+              apply_target_properties(result, properties, fallback_name: 'SonVu_CNC_Tenon_Result')
+            else
+              result.name = original_name.empty? ? 'SonVu_CNC_Tenon_Result' : original_name if result.respond_to?(:name=)
+              result.material = original_material if original_material && result.respond_to?(:material=)
+              result.layer = original_layer if original_layer && result.respond_to?(:layer=)
+            end
             result.delete_attribute(
               CNCPlugins::ATTRIBUTE_DICTIONARY,
               CNCPlugins::GENERATED_GROUP_ATTRIBUTE
             ) if result.respond_to?(:delete_attribute)
 
-            model.selection.clear
-            model.selection.add(result)
-            model.commit_operation
+            if update_selection
+              model.selection.clear
+              model.selection.add(result)
+            end
             result
-          rescue StandardError
-            model.abort_operation
-            raise
+          end
+        end
+
+        def execute_model_operation(model, operation_name, manage_operation)
+          model.start_operation(operation_name, true) if manage_operation
+          result = yield
+          model.commit_operation if manage_operation
+          result
+        rescue StandardError
+          model.abort_operation if manage_operation
+          raise
+        end
+
+        def capture_target_properties(target)
+          definition = target.respond_to?(:definition) ? target.definition : nil
+          {
+            name: target.respond_to?(:name) ? target.name.to_s : '',
+            material: target.respond_to?(:material) ? target.material : nil,
+            layer: target.respond_to?(:layer) ? target.layer : nil,
+            entity_attributes: capture_attributes(target),
+            definition_attributes: capture_attributes(definition)
+          }
+        end
+
+        def apply_target_properties(result, properties, fallback_name:)
+          name = properties[:name].to_s
+          result.name = name.empty? ? fallback_name : name if result.respond_to?(:name=)
+          if properties[:material] && result.respond_to?(:material=)
+            result.material = properties[:material]
+          end
+          result.layer = properties[:layer] if properties[:layer] && result.respond_to?(:layer=)
+          apply_attributes(result, properties[:entity_attributes])
+          definition = result.respond_to?(:definition) ? result.definition : nil
+          apply_attributes(definition, properties[:definition_attributes])
+          result
+        end
+
+        def capture_attributes(entity)
+          return {} unless entity && entity.respond_to?(:attribute_dictionaries)
+
+          dictionaries = entity.attribute_dictionaries
+          return {} unless dictionaries
+
+          dictionaries.each_with_object({}) do |dictionary, result|
+            values = {}
+            dictionary.each_pair { |key, value| values[key.to_s] = value }
+            result[dictionary.name.to_s] = values
+          end
+        end
+
+        def apply_attributes(entity, dictionaries)
+          return unless entity && entity.respond_to?(:set_attribute)
+
+          dictionaries.to_h.each do |dictionary_name, values|
+            values.each do |key, value|
+              entity.set_attribute(dictionary_name, key, value)
+            end
           end
         end
 
@@ -161,6 +240,16 @@ module SonVu
           union_params = params.merge(tenon_projection: tenon_projection(params) + overlap)
           union_origin = Geom::Point3d.new(origin.x, origin.y, origin.z - overlap)
           [union_params, union_origin]
+        end
+
+        def mortise_cut_geometry(params, origin)
+          overlap = CNCPlugins::Units.millimeters_to_model_units(MORTISE_CUT_OVERLAP_MM)
+          cutter_params = params.merge(mortise_depth: params.fetch(:mortise_depth) + overlap)
+          if params[:mortise_model_depth]
+            cutter_params[:mortise_model_depth] = params[:mortise_model_depth] + overlap
+          end
+          cutter_origin = Geom::Point3d.new(origin.x, origin.y, origin.z + overlap)
+          [cutter_params, cutter_origin]
         end
 
         def create_cut_backup(target)
@@ -197,9 +286,9 @@ module SonVu
           group
         end
 
-        def create_mortise_template(params, origin: Geom::Point3d.new(0, 0, 0))
+        def create_mortise_template(params, origin: Geom::Point3d.new(0, 0, 0), entities: nil)
           validate_mortise_against_face(params)
-          group = Sketchup.active_model.active_entities.add_group
+          group = (entities || Sketchup.active_model.active_entities).add_group
           group.name = MORTISE_GROUP_NAME
 
           points = centered_mortise_profile_points(params, origin)
@@ -210,9 +299,9 @@ module SonVu
           group
         end
 
-        def create_mortise_cutter(params, origin: Geom::Point3d.new(0, 0, 0))
+        def create_mortise_cutter(params, origin: Geom::Point3d.new(0, 0, 0), entities: nil)
           validate_mortise_against_face(params)
-          group = Sketchup.active_model.active_entities.add_group
+          group = (entities || Sketchup.active_model.active_entities).add_group
           group.name = MORTISE_CUTTER_GROUP_NAME
 
           points = centered_mortise_profile_points(params, origin)
@@ -221,7 +310,8 @@ module SonVu
           group
         end
 
-        def create_tenon_template(params, origin: Geom::Point3d.new(0, 0, 0))
+        def create_tenon_template(params, origin: Geom::Point3d.new(0, 0, 0), entities: nil,
+                                  apply_material: true)
           tenon_width = effective_tenon_width(params)
           tenon_height = effective_tenon_height(params)
           tenon_projection = tenon_projection(params)
@@ -234,7 +324,7 @@ module SonVu
 
           tenon_origin = tenon_template_origin(params, origin)
 
-          group = Sketchup.active_model.active_entities.add_group
+          group = (entities || Sketchup.active_model.active_entities).add_group
           group.name = TENON_GROUP_NAME
 
           tenon_origins(params, tenon_origin).each do |current_origin|
@@ -242,7 +332,7 @@ module SonVu
             add_xz_profile_solid(group.entities, profile, tenon_height)
           end
 
-          apply_group_material(group, tenon_material)
+          apply_group_material(group, tenon_material) if apply_material
           mark_generated_group(group)
           group
         end
@@ -621,7 +711,11 @@ module SonVu
           width = params.fetch(:mortise_width)
           height = params.fetch(:mortise_height)
           radius = mortise_cutter_radius(params)
-          offset = tbone_center_offset(radius)
+          centers = VerticalTBoneGeometry.relief_centers(
+            width: width,
+            height: height,
+            radius: radius
+          )
 
           # Vertical T-bone geometry moves each cutter center vertically outward
           # from the corner. Bottom reliefs extend toward negative Y, and top
@@ -631,10 +725,10 @@ module SonVu
             height: height,
             radius: radius,
             centers: {
-              bottom_left: Geom::Point3d.new(0, -offset, 0),
-              bottom_right: Geom::Point3d.new(width, -offset, 0),
-              top_right: Geom::Point3d.new(width, height + offset, 0),
-              top_left: Geom::Point3d.new(0, height + offset, 0)
+              bottom_left: geom_point_from_xy(centers.fetch(:bottom_left)),
+              bottom_right: geom_point_from_xy(centers.fetch(:bottom_right)),
+              top_right: geom_point_from_xy(centers.fetch(:top_right)),
+              top_left: geom_point_from_xy(centers.fetch(:top_left))
             },
             preferences: {
               bottom_left: { left: :min, bottom: :max },
@@ -753,7 +847,11 @@ module SonVu
         end
 
         def tbone_center_offset(radius)
-          radius * TBONE_CENTER_OFFSET_FACTOR
+          VerticalTBoneGeometry.center_offset(radius)
+        end
+
+        def geom_point_from_xy(values)
+          Geom::Point3d.new(values[0], values[1], 0)
         end
 
         def mortise_profile_right_extent(params)

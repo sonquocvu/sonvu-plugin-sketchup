@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Tạo mộng âm dương tự động</title>
+    <link rel="stylesheet" href="automatic_preview.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="page-head">
+        <div class="brand">SonVu CNC Plugins</div>
+        <h1>Tạo mộng âm dương tự động</h1>
+        <p>Phân tích hàng loạt vùng chọn. Vị trí không an toàn sẽ được bỏ qua để bạn xử lý bằng công cụ mộng đơn lẻ.</p>
+      </header>
+
+      <div id="staleBanner" class="banner stale" hidden></div>
+      <div id="globalError" class="banner error" hidden></div>
+
+      <section class="panel">
+        <div class="section-head">
+          <div><h2>Thông số mộng dùng chung</h2><p>Đơn vị hiển thị: milimét.</p></div>
+        </div>
+        <form id="settingsForm" novalidate>
+          <div class="settings-grid">
+            <label><span>Chiều dài mộng</span><div class="unit-field"><input id="joint_length_mm" type="number" step="0.1" min="0"><b>mm</b></div></label>
+            <label><span>Số lượng mộng trên mỗi cạnh</span><input id="requested_count" type="number" step="1" min="1"></label>
+            <label><span>Khoảng cách hai đầu</span><div class="unit-field"><input id="edge_offset_mm" type="number" step="0.1" min="0"><b>mm</b></div></label>
+            <label class="wide"><span>Khoảng cách tối thiểu giữa các mộng</span><div class="unit-field"><input id="minimum_gap_mm" type="number" step="0.1" min="0"><b>mm</b></div></label>
+          </div>
+          <details class="geometry-settings">
+            <summary>Thông số gia công</summary>
+            <div class="settings-grid geometry-grid">
+              <label><span>Chiều sâu mộng âm</span><div class="unit-field"><input id="mortise_depth_mm" type="number" step="0.1" min="0"><b>mm</b></div></label>
+              <label><span>Chiều cao mộng dương</span><div class="unit-field"><input id="tenon_height_mm" type="number" step="0.1" min="0"><b>mm</b></div></label>
+              <label><span>Bán kính dao</span><div class="unit-field"><input id="cutter_radius_mm" type="number" step="0.1" min="0"><b>mm</b></div></label>
+              <label><span>Độ hở lắp ráp</span><div class="unit-field"><input id="clearance_mm" type="number" step="0.1" min="0"><b>mm</b></div></label>
+            </div>
+            <p class="fixed-geometry-note">Mộng âm tự động sử dụng kiểu dọc T-bone.<br>Bề dày mộng được tự động tính theo độ dày của từng tấm.</p>
+          </details>
+          <div id="settingsError" class="inline-error" hidden></div>
+        </form>
+      </section>
+
+      <section class="panel display-panel">
+        <div class="section-head"><div><h2>Hiển thị trong vùng vẽ</h2><p>Chỉ thay đổi đường xem trước, không sửa mô hình.</p></div></div>
+        <div class="display-toggles">
+          <label class="choice"><input id="displayTenons" type="checkbox">Hiện mộng dương</label>
+          <label class="choice"><input id="displayMortises" type="checkbox">Hiện mộng âm</label>
+          <label class="choice"><input id="displayContact" type="checkbox">Hiện vùng tiếp xúc</label>
+        </div>
+      </section>
+
+      <section class="panel summary-panel">
+        <div class="section-head"><div><h2>Kết quả phân tích</h2><p id="summaryHint">Bấm Xem trước để bắt đầu.</p></div></div>
+        <div class="summary-grid">
+          <div><strong id="scannedCount">0</strong><span>Chi tiết đã quét</span></div>
+          <div><strong id="validCount">0</strong><span>Liên kết hợp lệ</span></div>
+          <div><strong id="jointCount">0</strong><span>Tổng số mộng xem trước</span></div>
+          <div id="skippedMetric"><strong id="skippedCount">0</strong><span>Vị trí bị bỏ qua</span></div>
+        </div>
+        <div id="skippedNote" class="skip-note" hidden></div>
+        <details id="skippedDetails" hidden>
+          <summary>Xem lý do bỏ qua</summary>
+          <ul id="skippedReasons"></ul>
+        </details>
+      </section>
+
+      <footer class="actions">
+        <button type="button" id="previewButton">Xem trước</button>
+        <button type="button" id="recalculateButton" class="secondary" disabled>Tính lại</button>
+        <button type="button" id="createButton" disabled>Tạo mộng</button>
+        <button type="button" id="closeButton" class="secondary">Đóng</button>
+      </footer>
+      <p id="readinessMessage" class="readiness">Bấm Xem trước để phân tích vùng chọn.</p>
+    </main>
+    <script src="automatic_preview.js"></script>
+  </body>
+</html>
