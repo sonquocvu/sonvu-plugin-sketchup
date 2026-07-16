@@ -3,7 +3,11 @@
 # Single unit-agnostic drawer dimension calculator. It contains no SketchUp API
 # calls and returns values in exactly the same unit supplied by the caller.
 
-require_relative 'specification'
+if defined?(Sketchup) && Sketchup.respond_to?(:require)
+  Sketchup.require 'sonvu_cnc_plugins/furniture_builder/drawer_builder/specification'
+else
+  require_relative 'specification'
+end
 
 module SonVu
   module CNCPlugins

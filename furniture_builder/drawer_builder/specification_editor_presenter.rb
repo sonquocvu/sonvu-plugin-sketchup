@@ -1,10 +1,18 @@
 # frozen_string_literal: true
 
-require_relative '../../shared/units'
-require_relative 'slide_configurations'
-require_relative 'calculator'
-require_relative 'system_registry'
-require_relative 'opening_geometry'
+if defined?(Sketchup) && Sketchup.respond_to?(:require)
+  Sketchup.require 'sonvu_cnc_plugins/shared/units'
+  Sketchup.require 'sonvu_cnc_plugins/furniture_builder/drawer_builder/slide_configurations'
+  Sketchup.require 'sonvu_cnc_plugins/furniture_builder/drawer_builder/calculator'
+  Sketchup.require 'sonvu_cnc_plugins/furniture_builder/drawer_builder/system_registry'
+  Sketchup.require 'sonvu_cnc_plugins/furniture_builder/drawer_builder/opening_geometry'
+else
+  require_relative '../../shared/units'
+  require_relative 'slide_configurations'
+  require_relative 'calculator'
+  require_relative 'system_registry'
+  require_relative 'opening_geometry'
+end
 
 # Read-only conversion of drawer-system data into a safe Vietnamese UI payload.
 

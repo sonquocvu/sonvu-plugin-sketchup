@@ -4,7 +4,11 @@
 # intentionally uses duck typing so its production-data rules can be tested
 # without loading SketchUp.
 
-require_relative '../constants'
+if defined?(Sketchup) && Sketchup.respond_to?(:require)
+  Sketchup.require 'sonvu_cnc_plugins/constants'
+else
+  require_relative '../constants'
+end
 
 module SonVu
   module CNCPlugins

@@ -1,9 +1,15 @@
 # frozen_string_literal: true
 
 require 'json'
-require_relative '../../shared/units'
-require_relative 'slide_configurations'
-require_relative 'calculator'
+if defined?(Sketchup) && Sketchup.respond_to?(:require)
+  Sketchup.require 'sonvu_cnc_plugins/shared/units'
+  Sketchup.require 'sonvu_cnc_plugins/furniture_builder/drawer_builder/slide_configurations'
+  Sketchup.require 'sonvu_cnc_plugins/furniture_builder/drawer_builder/calculator'
+else
+  require_relative '../../shared/units'
+  require_relative 'slide_configurations'
+  require_relative 'calculator'
+end
 
 # Pure payload parser for the drawer editor. It accepts Vietnamese comma
 # decimals, resolves slide data in Ruby, converts millimetres through the shared

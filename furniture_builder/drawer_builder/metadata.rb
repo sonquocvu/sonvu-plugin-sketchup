@@ -1,7 +1,12 @@
 # frozen_string_literal: true
 
-require_relative '../../constants'
-require_relative 'identity'
+if defined?(Sketchup) && Sketchup.respond_to?(:require)
+  Sketchup.require 'sonvu_cnc_plugins/constants'
+  Sketchup.require 'sonvu_cnc_plugins/furniture_builder/drawer_builder/identity'
+else
+  require_relative '../../constants'
+  require_relative 'identity'
+end
 
 # Thin instance-level AttributeDictionary adapter. It reuses the existing
 # SonVu dictionary and writes only additive drawer identity keys.

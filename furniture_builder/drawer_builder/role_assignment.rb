@@ -1,8 +1,14 @@
 # frozen_string_literal: true
 
-require_relative 'selection_validator'
-require_relative 'system_registry'
-require_relative 'persistence'
+if defined?(Sketchup) && Sketchup.respond_to?(:require)
+  Sketchup.require 'sonvu_cnc_plugins/furniture_builder/drawer_builder/selection_validator'
+  Sketchup.require 'sonvu_cnc_plugins/furniture_builder/drawer_builder/system_registry'
+  Sketchup.require 'sonvu_cnc_plugins/furniture_builder/drawer_builder/persistence'
+else
+  require_relative 'selection_validator'
+  require_relative 'system_registry'
+  require_relative 'persistence'
+end
 
 # Conservative service for assigning standalone drawer roles to existing
 # instances. SketchUp writes are wrapped in one operation unless the caller

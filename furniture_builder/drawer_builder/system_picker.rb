@@ -1,7 +1,12 @@
 # frozen_string_literal: true
 
-require_relative 'system_registry'
-require_relative 'command_messages'
+if defined?(Sketchup) && Sketchup.respond_to?(:require)
+  Sketchup.require 'sonvu_cnc_plugins/furniture_builder/drawer_builder/system_registry'
+  Sketchup.require 'sonvu_cnc_plugins/furniture_builder/drawer_builder/command_messages'
+else
+  require_relative 'system_registry'
+  require_relative 'command_messages'
+end
 
 # Native SketchUp picker for joining an existing drawer system. Display labels
 # are temporary and map back to stable UUIDs without persisting display indexes.

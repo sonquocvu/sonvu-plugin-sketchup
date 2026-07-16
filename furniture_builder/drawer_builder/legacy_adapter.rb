@@ -1,6 +1,10 @@
 # frozen_string_literal: true
 
-require_relative 'metadata'
+if defined?(Sketchup) && Sketchup.respond_to?(:require)
+  Sketchup.require 'sonvu_cnc_plugins/furniture_builder/drawer_builder/metadata'
+else
+  require_relative 'metadata'
+end
 
 # Read-only recognition and explicit opt-in adaptation for drawer metadata
 # emitted by the existing Furniture Builder implementation.

@@ -1,10 +1,17 @@
 # frozen_string_literal: true
 
 require 'json'
-require_relative 'selection_validator'
-require_relative 'specification_owner'
-require_relative 'specification_editor_presenter'
-require_relative 'specification_editor_parser'
+if defined?(Sketchup) && Sketchup.respond_to?(:require)
+  Sketchup.require 'sonvu_cnc_plugins/furniture_builder/drawer_builder/selection_validator'
+  Sketchup.require 'sonvu_cnc_plugins/furniture_builder/drawer_builder/specification_owner'
+  Sketchup.require 'sonvu_cnc_plugins/furniture_builder/drawer_builder/specification_editor_presenter'
+  Sketchup.require 'sonvu_cnc_plugins/furniture_builder/drawer_builder/specification_editor_parser'
+else
+  require_relative 'selection_validator'
+  require_relative 'specification_owner'
+  require_relative 'specification_editor_presenter'
+  require_relative 'specification_editor_parser'
+end
 
 # HtmlDialog coordinator for editing one assigned drawer system. The dialog is
 # bound to the originally selected entity, role, owner, and system ID; browser

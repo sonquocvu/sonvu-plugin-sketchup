@@ -4,7 +4,11 @@
 # 5A–5B reconstruct panel-local operations and apply saved machining rules but
 # never change model geometry or emit machine code.
 
-require_relative 'machining_rules'
+if defined?(Sketchup) && Sketchup.respond_to?(:require)
+  Sketchup.require 'sonvu_cnc_plugins/furniture_builder/machining_rules'
+else
+  require_relative 'machining_rules'
+end
 
 module SonVu
   module CNCPlugins

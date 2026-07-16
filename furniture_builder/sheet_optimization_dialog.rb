@@ -1,7 +1,11 @@
 # frozen_string_literal: true
 
 require 'json'
-require_relative 'sheet_layout_exporter'
+if defined?(Sketchup) && Sketchup.respond_to?(:require)
+  Sketchup.require 'sonvu_cnc_plugins/furniture_builder/sheet_layout_exporter'
+else
+  require_relative 'sheet_layout_exporter'
+end
 
 # Phase 4A–4C controller for optimization, visualization, and explicit export.
 # Settings are stored in preferences only after a successful calculation.

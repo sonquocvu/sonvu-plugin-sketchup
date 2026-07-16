@@ -4,8 +4,13 @@ require 'cgi'
 require 'csv'
 require 'fileutils'
 require 'securerandom'
-require_relative 'cut_list_csv_exporter'
-require_relative 'sheet_layout_svg'
+if defined?(Sketchup) && Sketchup.respond_to?(:require)
+  Sketchup.require 'sonvu_cnc_plugins/furniture_builder/cut_list_csv_exporter'
+  Sketchup.require 'sonvu_cnc_plugins/furniture_builder/sheet_layout_svg'
+else
+  require_relative 'cut_list_csv_exporter'
+  require_relative 'sheet_layout_svg'
+end
 
 # Phase 4C production handoff. It exports one self-contained printable HTML
 # report and one Excel-friendly placement CSV without changing the model.

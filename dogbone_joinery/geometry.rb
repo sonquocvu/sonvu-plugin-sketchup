@@ -3,7 +3,11 @@
 # Geometry routines for Dogbone Joinery. The first generator creates standalone
 # grouped templates only and does not modify any selected model geometry.
 
-require_relative 'vertical_tbone_geometry'
+if defined?(Sketchup) && Sketchup.respond_to?(:require)
+  Sketchup.require 'sonvu_cnc_plugins/dogbone_joinery/vertical_tbone_geometry'
+else
+  require_relative 'vertical_tbone_geometry'
+end
 
 module SonVu
   module CNCPlugins

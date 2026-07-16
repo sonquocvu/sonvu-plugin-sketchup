@@ -1,7 +1,11 @@
 # frozen_string_literal: true
 
 require 'cgi'
-require_relative 'sheet_layout_svg'
+if defined?(Sketchup) && Sketchup.respond_to?(:require)
+  Sketchup.require 'sonvu_cnc_plugins/furniture_builder/sheet_layout_svg'
+else
+  require_relative 'sheet_layout_svg'
+end
 
 # Vietnamese Phase 4C optimizer with interactive SVG maps and explicit export.
 # The coordinate table remains available as an auditable Phase 4A data view.

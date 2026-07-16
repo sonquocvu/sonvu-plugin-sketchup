@@ -1,8 +1,13 @@
 # frozen_string_literal: true
 
 require 'json'
-require_relative 'metadata'
-require_relative 'specification'
+if defined?(Sketchup) && Sketchup.respond_to?(:require)
+  Sketchup.require 'sonvu_cnc_plugins/furniture_builder/drawer_builder/metadata'
+  Sketchup.require 'sonvu_cnc_plugins/furniture_builder/drawer_builder/specification'
+else
+  require_relative 'metadata'
+  require_relative 'specification'
+end
 
 # JSON persistence for the pure drawer specification. Numeric dimensions are
 # stored as numbers in the unit supplied by the caller, never as display text.

@@ -3,8 +3,13 @@
 # Pure furniture layout calculations. Keeping this file independent from the
 # SketchUp API makes the cabinet rules deterministic and easy to regression-test.
 
-require_relative 'drawer_builder/slide_configurations'
-require_relative 'drawer_builder/calculator'
+if defined?(Sketchup) && Sketchup.respond_to?(:require)
+  Sketchup.require 'sonvu_cnc_plugins/furniture_builder/drawer_builder/slide_configurations'
+  Sketchup.require 'sonvu_cnc_plugins/furniture_builder/drawer_builder/calculator'
+else
+  require_relative 'drawer_builder/slide_configurations'
+  require_relative 'drawer_builder/calculator'
+end
 
 module SonVu
   module CNCPlugins

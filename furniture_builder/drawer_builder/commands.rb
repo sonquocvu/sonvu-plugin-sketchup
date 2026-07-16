@@ -1,11 +1,20 @@
 # frozen_string_literal: true
 
-require_relative '../../shared/ui_helpers'
-require_relative 'role_assignment'
-require_relative 'system_picker'
-require_relative 'command_messages'
-require_relative 'specification_editor'
-require_relative 'toolbar'
+if defined?(Sketchup) && Sketchup.respond_to?(:require)
+  Sketchup.require 'sonvu_cnc_plugins/shared/ui_helpers'
+  Sketchup.require 'sonvu_cnc_plugins/furniture_builder/drawer_builder/role_assignment'
+  Sketchup.require 'sonvu_cnc_plugins/furniture_builder/drawer_builder/system_picker'
+  Sketchup.require 'sonvu_cnc_plugins/furniture_builder/drawer_builder/command_messages'
+  Sketchup.require 'sonvu_cnc_plugins/furniture_builder/drawer_builder/specification_editor'
+  Sketchup.require 'sonvu_cnc_plugins/furniture_builder/drawer_builder/toolbar'
+else
+  require_relative '../../shared/ui_helpers'
+  require_relative 'role_assignment'
+  require_relative 'system_picker'
+  require_relative 'command_messages'
+  require_relative 'specification_editor'
+  require_relative 'toolbar'
+end
 
 # Vietnamese SketchUp command layer for assigning semantic drawer roles. The
 # command owns the exact named model operation and calls Step 5 services with

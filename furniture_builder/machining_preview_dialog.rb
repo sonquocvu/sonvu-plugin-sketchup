@@ -4,7 +4,11 @@
 # explicit controller-neutral export.
 
 require 'json'
-require_relative 'machining_exporter'
+if defined?(Sketchup) && Sketchup.respond_to?(:require)
+  Sketchup.require 'sonvu_cnc_plugins/furniture_builder/machining_exporter'
+else
+  require_relative 'machining_exporter'
+end
 
 module SonVu
   module CNCPlugins

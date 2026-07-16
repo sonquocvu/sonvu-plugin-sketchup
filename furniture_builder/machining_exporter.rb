@@ -7,7 +7,11 @@
 require 'csv'
 require 'fileutils'
 require 'securerandom'
-require_relative 'cut_list_csv_exporter'
+if defined?(Sketchup) && Sketchup.respond_to?(:require)
+  Sketchup.require 'sonvu_cnc_plugins/furniture_builder/cut_list_csv_exporter'
+else
+  require_relative 'cut_list_csv_exporter'
+end
 
 module SonVu
   module CNCPlugins
