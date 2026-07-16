@@ -84,11 +84,22 @@
     byId('settingsError').hidden = false;
     settingIds.forEach(function (id) { byId(id).classList.remove('field-error'); });
     if (error && error.field && byId(error.field)) byId(error.field).classList.add('field-error');
+    var diagnosticLines = [];
+    if (error && error.code) diagnosticLines.push('Mã lỗi: ' + error.code);
+    if (error && error.diagnostic_id) diagnosticLines.push('Mã chẩn đoán: ' + error.diagnostic_id);
+    if (error && error.diagnostic_detail) diagnosticLines.push('Nguyên nhân gốc: ' + error.diagnostic_detail);
+    if (error && error.diagnostic_log_path) diagnosticLines.push('File log: ' + error.diagnostic_log_path);
+    byId('diagnosticText').textContent = diagnosticLines.join('\n');
+    byId('diagnosticDetails').hidden = diagnosticLines.length === 0;
+    byId('diagnosticDetails').open = diagnosticLines.length > 1;
     byId('createButton').disabled = true;
   }
   function hideError() {
     byId('globalError').hidden = true;
     byId('settingsError').hidden = true;
+    byId('diagnosticDetails').hidden = true;
+    byId('diagnosticDetails').open = false;
+    byId('diagnosticText').textContent = '';
     settingIds.forEach(function (id) { byId(id).classList.remove('field-error'); });
   }
   function markInputsDirty() {

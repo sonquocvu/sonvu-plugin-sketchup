@@ -50,10 +50,52 @@ module Geom
       )
     end
   end
+
+  class Transformation
+    class Inverse
+      attr_reader :transformation
+
+      def initialize(transformation)
+        @transformation = transformation
+      end
+
+      def *(other)
+        Composition.new(self, other)
+      end
+    end
+
+    Composition = Struct.new(:left, :right)
+
+    attr_reader :origin, :xaxis, :yaxis, :zaxis
+
+    def self.axes(origin, xaxis, yaxis, zaxis)
+      new(origin, xaxis, yaxis, zaxis)
+    end
+
+    def initialize(origin, xaxis, yaxis, zaxis)
+      @origin = origin
+      @xaxis = vector(xaxis)
+      @yaxis = vector(yaxis)
+      @zaxis = vector(zaxis)
+    end
+
+    def inverse
+      Inverse.new(self)
+    end
+
+    private
+
+    def vector(value)
+      return value if value.respond_to?(:x)
+
+      Vector3d.new(value[0], value[1], value[2])
+    end
+  end
 end
 
 module Sketchup
   class << self
+    attr_accessor :active_model
     attr_reader :last_status_text
 
     def set_status_text(message)
@@ -162,6 +204,83 @@ module SonVu
             @definition = definition
             @transformation = transformation
             @backup = FakeBackup.new
+          end
+        end
+
+        class FakeBooleanEntity
+          attr_accessor :layer, :material, :name, :subtract_result, :union_result,
+                        :outer_shell_result
+          attr_reader :erase_count, :persistent_id, :entityID, :outer_shell_count
+
+          def initialize(persistent_id:, entity_id: nil, manifold: true, valid: true)
+            @persistent_id = persistent_id
+            @entityID = entity_id
+            @manifold = manifold
+            @valid = valid
+            @erase_count = 0
+            @outer_shell_count = 0
+          end
+
+          def valid?
+            @valid
+          end
+
+          def manifold?
+            @manifold
+          end
+
+          def erase!
+            @erase_count += 1
+            @valid = false
+          end
+
+          def subtract(_other)
+            subtract_result
+          end
+
+          def union(_other)
+            union_result
+          end
+
+          def outer_shell(_other)
+            @outer_shell_count += 1
+            outer_shell_result
+          end
+        end
+
+        class FakeTransformEntities
+          attr_reader :applied_transform, :applied_entities
+
+          def initialize
+            @content = [:face, :edge]
+          end
+
+          def to_a
+            @content.dup
+          end
+
+          def transform_entities(transformation, entities)
+            @applied_transform = transformation
+            @applied_entities = entities
+            true
+          end
+        end
+
+        class FakeScaledSolid
+          attr_accessor :transformation
+          attr_reader :entities
+
+          def initialize(transformation)
+            @transformation = transformation
+            @entities = FakeTransformEntities.new
+          end
+
+          def valid?
+            true
+          end
+
+          def manifold?
+            true
           end
         end
 
@@ -428,8 +547,8 @@ module SonVu
             Geom::Point3d.new(0, 0, 0)
           )
 
-          assert_in_delta(-0.1, union_origin.z, 0.0001)
-          assert_in_delta 20.1, Geometry.tenon_projection(union_params), 0.0001
+          assert_in_delta(-0.5, union_origin.z, 0.0001)
+          assert_in_delta 20.5, Geometry.tenon_projection(union_params), 0.0001
           assert_in_delta 20.0, union_origin.z + Geometry.tenon_projection(union_params), 0.0001
         end
 
@@ -447,6 +566,217 @@ module SonVu
           assert_in_delta 10.1, cutter_params[:mortise_depth], 0.0001
           assert_in_delta 18.1, cutter_params[:mortise_model_depth], 0.0001
           assert_in_delta(-10.0, cutter_origin.z - cutter_params[:mortise_depth], 0.0001)
+        end
+
+        def test_full_face_mortise_cutter_extends_past_both_side_faces
+          params = {
+            mortise_height: 17.5,
+            mortise_face_height: 17.5,
+            mortise_depth: 10.0,
+            mortise_model_depth: 17.5
+          }
+
+          cutter_params, = Geometry.mortise_cut_geometry(
+            params,
+            Geom::Point3d.new(0.0, 0.0, 0.0)
+          )
+
+          assert_in_delta 17.7, cutter_params[:mortise_height], 0.0001
+          assert Geometry.mortise_spans_face_height?(params)
+        end
+
+        def test_partial_width_mortise_cutter_preserves_requested_height
+          params = {
+            mortise_height: 17.5,
+            mortise_face_height: 40.0,
+            mortise_depth: 10.0
+          }
+
+          cutter_params, = Geometry.mortise_cut_geometry(
+            params,
+            Geom::Point3d.new(0.0, 0.0, 0.0)
+          )
+
+          assert_in_delta 17.5, cutter_params[:mortise_height], 0.0001
+          refute Geometry.mortise_spans_face_height?(params)
+        end
+
+        def test_mortise_cut_leaves_boolean_operand_lifecycle_to_sketchup
+          target = FakeBooleanEntity.new(persistent_id: 101, entity_id: 201)
+          cutter = FakeBooleanEntity.new(persistent_id: 102, entity_id: 202)
+          result = FakeBooleanEntity.new(persistent_id: 102, entity_id: 202)
+          target.subtract_result = result
+          Sketchup.active_model = Object.new
+          params = { mortise_depth: 10.0, mortise_model_depth: 18.0 }
+
+          generated = Geometry.stub(:create_mortise_cutter, cutter) do
+            Geometry.cut_mortise_into_solid(
+              target,
+              params,
+              manage_operation: false,
+              create_backup: false
+            )
+          end
+
+          assert_same result, generated
+          assert_equal 0, cutter.erase_count
+          assert_equal 0, target.erase_count
+          assert generated.valid?
+          assert generated.manifold?
+        end
+
+        def test_mortise_boolean_failure_reports_result_and_operand_states
+          target = FakeBooleanEntity.new(persistent_id: 101, entity_id: 201)
+          cutter = FakeBooleanEntity.new(persistent_id: 102, entity_id: 202)
+          target.subtract_result = nil
+          Sketchup.active_model = Object.new
+          params = { mortise_depth: 10.0, mortise_model_depth: 18.0 }
+
+          error = assert_raises(RuntimeError) do
+            Geometry.stub(:create_mortise_cutter, cutter) do
+              Geometry.cut_mortise_into_solid(
+                target,
+                params,
+                manage_operation: false,
+                create_backup: false
+              )
+            end
+          end
+
+          assert_includes error.message, 'result=nil'
+          assert_includes error.message, 'persistent_id=101'
+          assert_includes error.message, 'persistent_id=102'
+        end
+
+        def test_tenon_union_leaves_boolean_operand_lifecycle_to_sketchup
+          target = FakeBooleanEntity.new(persistent_id: 101, entity_id: 201)
+          tenons = FakeBooleanEntity.new(persistent_id: 102, entity_id: 202)
+          result = FakeBooleanEntity.new(persistent_id: 103, entity_id: 203)
+          target.union_result = result
+          Sketchup.active_model = Object.new
+          params = base_params
+
+          generated = Geometry.stub(:create_tenon_template, tenons) do
+            Geometry.union_tenons_into_solid(
+              target,
+              params,
+              manage_operation: false,
+              create_backup: false,
+              ensure_unique: false,
+              update_selection: false,
+              apply_template_material: false
+            )
+          end
+
+          assert_same result, generated
+          assert_equal 0, tenons.erase_count
+          assert_equal 0, target.erase_count
+          assert generated.valid?
+          assert generated.manifold?
+        end
+
+        def test_tenon_union_uses_outer_shell_when_union_returns_nil_without_destroying_operands
+          target = FakeBooleanEntity.new(persistent_id: 101, entity_id: 201)
+          tenons = FakeBooleanEntity.new(persistent_id: 102, entity_id: 202)
+          result = FakeBooleanEntity.new(persistent_id: 103, entity_id: 203)
+          target.union_result = nil
+          target.outer_shell_result = result
+          Sketchup.active_model = Object.new
+
+          generated = Geometry.stub(:create_tenon_template, tenons) do
+            Geometry.union_tenons_into_solid(
+              target,
+              base_params,
+              manage_operation: false,
+              create_backup: false,
+              ensure_unique: false,
+              update_selection: false,
+              apply_template_material: false
+            )
+          end
+
+          assert_same result, generated
+          assert_equal 1, target.outer_shell_count
+          assert generated.valid?
+          assert generated.manifold?
+        end
+
+        def test_tenon_boolean_failure_reports_native_results_and_operand_states
+          target = FakeBooleanEntity.new(persistent_id: 101, entity_id: 201)
+          tenons = FakeBooleanEntity.new(persistent_id: 102, entity_id: 202)
+          target.union_result = nil
+          target.outer_shell_result = nil
+          Sketchup.active_model = Object.new
+
+          error = assert_raises(RuntimeError) do
+            Geometry.stub(:create_tenon_template, tenons) do
+              Geometry.union_tenons_into_solid(
+                target,
+                base_params,
+                manage_operation: false,
+                create_backup: false,
+                ensure_unique: false,
+                update_selection: false,
+                apply_template_material: false
+              )
+            end
+          end
+
+          assert_includes error.message, 'union_result=nil'
+          assert_includes error.message, 'outer_shell_result=nil'
+          assert_includes error.message, 'persistent_id=101'
+          assert_includes error.message, 'persistent_id=102'
+        end
+
+        def test_boolean_solid_rejects_nonmanifold_or_invalid_entities
+          nonmanifold = FakeBooleanEntity.new(persistent_id: 101, manifold: false)
+          invalid = FakeBooleanEntity.new(persistent_id: 102, valid: false)
+
+          refute Geometry.boolean_solid?(nonmanifold)
+          refute Geometry.boolean_solid?(invalid)
+          refute Geometry.boolean_solid?(nil)
+        end
+
+        def test_nonuniform_instance_scale_is_baked_before_boolean_without_moving_world_geometry
+          original = Geom::Transformation.axes(
+            Geom::Point3d.new(10, 20, 30),
+            Geom::Vector3d.new(3.5, 0, 0),
+            Geom::Vector3d.new(0, 0.9, 0),
+            Geom::Vector3d.new(0, 0, 1.03)
+          )
+          target = FakeScaledSolid.new(original)
+
+          returned = Geometry.normalize_solid_scale_for_boolean!(target)
+
+          assert_same target, returned
+          assert_in_delta 1.0, Geometry.boolean_axis_length(target.transformation.xaxis), 0.0001
+          assert_in_delta 1.0, Geometry.boolean_axis_length(target.transformation.yaxis), 0.0001
+          assert_in_delta 1.0, Geometry.boolean_axis_length(target.transformation.zaxis), 0.0001
+          assert_same original, target.entities.applied_transform.right
+          assert_equal [:face, :edge], target.entities.applied_entities
+          assert_equal [10, 20, 30], [
+            target.transformation.origin.x,
+            target.transformation.origin.y,
+            target.transformation.origin.z
+          ]
+        end
+
+        def test_sheared_instance_transform_is_rejected_before_boolean
+          sheared = Geom::Transformation.axes(
+            Geom::Point3d.new(0, 0, 0),
+            Geom::Vector3d.new(2, 0, 0),
+            Geom::Vector3d.new(0.2, 1, 0),
+            Geom::Vector3d.new(0, 0, 1)
+          )
+          target = FakeScaledSolid.new(sheared)
+
+          error = assert_raises(RuntimeError) do
+            Geometry.normalize_solid_scale_for_boolean!(target)
+          end
+
+          assert_includes error.message, 'shear'
+          assert_same sheared, target.transformation
+          assert_nil target.entities.applied_transform
         end
 
         def test_manual_vertical_tbone_uses_shared_relief_measurements

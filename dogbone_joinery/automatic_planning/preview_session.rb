@@ -333,7 +333,7 @@ module SonVu
                          settings_parser: PreviewSettingsParser.new,
                          serializer: PreviewStateSerializer.new,
                          primitive_builder: PreviewPrimitiveBuilder.new,
-                         executor: nil)
+                         executor: nil, diagnostic_logger: nil)
             @model = model
             @resolution = resolution
             @state = state
@@ -342,6 +342,7 @@ module SonVu
             @serializer = serializer
             @primitive_builder = primitive_builder
             @executor = executor
+            @diagnostic_logger = diagnostic_logger
             @observer = PreviewModelObserver.new(self)
             @overlay_tool = PreviewOverlayTool.new(self)
             @overlay_active = false
@@ -494,16 +495,24 @@ module SonVu
             state.mark_stale
             push_state
             set_generation_state(false)
-            send_error(result.user_message, result.failure_code)
-            result
-          rescue StandardError
-            state.mark_stale
-            push_state
-            set_generation_state(false)
             send_error(
-              'Không thể hoàn tất việc tạo mộng. Toàn bộ thay đổi đã được hoàn tác.',
-              'unexpected_execution_failure'
+              result.user_message,
+              result.failure_code,
+              details: result.failure_details
             )
+            result
+          rescue StandardError => error
+            diagnostic = record_unexpected_execution_failure(error)
+            safely_report_secondary_failure { state.mark_stale }
+            safely_report_secondary_failure { set_generation_state(false) }
+            safely_report_secondary_failure do
+              send_error(
+                'Không thể hoàn tất việc tạo mộng. Toàn bộ thay đổi đã được hoàn tác.',
+                'unexpected_execution_failure',
+                details: diagnostic_details(diagnostic)
+              )
+            end
+            nil
           end
 
           private
@@ -556,8 +565,16 @@ module SonVu
             model.active_view.invalidate if model.respond_to?(:active_view)
           end
 
-          def send_error(message, code, field: nil)
-            payload = JSON.generate(message: message, code: code, field: field)
+          def send_error(message, code, field: nil, details: nil)
+            diagnostic = details.respond_to?(:to_h) ? details.to_h : {}
+            payload = JSON.generate(
+              message: message,
+              code: code,
+              field: field,
+              diagnostic_id: diagnostic[:diagnostic_id],
+              diagnostic_detail: diagnostic[:diagnostic_detail],
+              diagnostic_log_path: diagnostic[:diagnostic_log_path]
+            )
             dialog.execute_script("window.SonVuAutomaticPreview.showError(#{payload});") if dialog
             nil
           end
@@ -572,6 +589,39 @@ module SonVu
 
           def automatic_executor
             @executor ||= AutomaticExecution::AutomaticJointGeometryExecutor.new
+          end
+
+          def diagnostic_logger
+            @diagnostic_logger ||= AutomaticExecution::AutomaticJointDiagnosticLogger.new
+          end
+
+          def record_unexpected_execution_failure(error)
+            diagnostic_logger.record(error)
+          rescue StandardError => log_error
+            Kernel.puts(
+              "[SonVu CNC] Could not record unexpected execution failure: " \
+              "#{log_error.class}: #{log_error.message}"
+            )
+            Kernel.puts("#{error.class}: #{error.message}")
+            error.backtrace.to_a.each { |line| Kernel.puts("  #{line}") }
+            nil
+          end
+
+          def diagnostic_details(diagnostic)
+            return {} unless diagnostic
+
+            {
+              diagnostic_id: diagnostic.id,
+              diagnostic_log_path: diagnostic.path,
+              diagnostic_detail: diagnostic.detail
+            }
+          end
+
+          def safely_report_secondary_failure
+            yield
+          rescue StandardError => error
+            record_unexpected_execution_failure(error)
+            nil
           end
 
           def handle_invalid_settings(error)

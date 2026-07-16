@@ -19,8 +19,11 @@ module SonVu
         TEMPLATE_GAP_MM = 10
         LABEL_GAP_MM = 8
         LABEL_LINE_SPACING_MM = 5
-        TENON_UNION_OVERLAP_MM = 0.1
+        TENON_UNION_OVERLAP_MM = 0.5
         MORTISE_CUT_OVERLAP_MM = 0.1
+        MORTISE_FACE_MATCH_TOLERANCE_MM = 0.01
+        BOOLEAN_TRANSFORM_EPSILON = 1.0e-8
+        BOOLEAN_ORTHOGONAL_TOLERANCE = 1.0e-6
         DOGBONE_ARC_SEGMENTS = 24
         DIAGONAL_CENTER_OFFSET_FACTOR = 0.5
         DOGBONE_STYLE_DIAGONAL = 'Chéo'
@@ -68,9 +71,10 @@ module SonVu
 
         def cut_mortise_into_solid(target, params, origin: Geom::Point3d.new(0, 0, 0), transformation: nil,
                                    manage_operation: true, create_backup: true, parent_entities: nil,
-                                   preserve_target_properties: false)
+                                   preserve_target_properties: false, normalize_target_scale: false)
           model = Sketchup.active_model
           execute_model_operation(model, 'Cắt mộng âm xương chó vào khối', manage_operation) do
+            normalize_solid_scale_for_boolean!(target) if normalize_target_scale
             properties = capture_target_properties(target) if preserve_target_properties
             create_cut_backup(target) if create_backup
             cutter_params, cutter_origin = mortise_cut_geometry(params, origin)
@@ -80,12 +84,19 @@ module SonVu
               entities: parent_entities
             )
             cutter.transform!(transformation) if transformation
+            unless boolean_solid?(cutter)
+              raise 'Khối cắt mộng âm chưa phải solid hợp lệ.'
+            end
 
+            target_before = boolean_entity_diagnostic(target)
+            cutter_before = boolean_entity_diagnostic(cutter)
             result = target.subtract(cutter)
-            raise 'SketchUp không cắt được khối. Vui lòng kiểm tra khối có phải solid hợp lệ không.' unless result && result.valid?
+            unless boolean_solid?(result)
+              raise 'SketchUp subtract không trả về solid hợp lệ. ' \
+                    "result=#{boolean_entity_diagnostic(result)}; " \
+                    "target_before=#{target_before}; cutter_before=#{cutter_before}"
+            end
 
-            cutter.erase! if cutter.valid?
-            target.erase! if target.valid? && target != result
             if preserve_target_properties
               apply_target_properties(result, properties, fallback_name: 'Dogbone_Cut_Result')
             else
@@ -100,7 +111,7 @@ module SonVu
                                     manage_operation: true, create_backup: true, ensure_unique: true,
                                     update_selection: true, parent_entities: nil,
                                     preserve_target_properties: false,
-                                    apply_template_material: true)
+                                    apply_template_material: true, normalize_target_scale: false)
           model = Sketchup.active_model
           execute_model_operation(model, 'Hợp mộng dương vào chi tiết CNC', manage_operation) do
             raise 'Đối tượng chứa mặt đã chọn không còn hợp lệ.' unless target && target.valid?
@@ -108,6 +119,7 @@ module SonVu
             raise 'Phiên bản SketchUp này không hỗ trợ phép hợp khối.' unless target.respond_to?(:union)
 
             target.make_unique if ensure_unique && target.respond_to?(:make_unique)
+            normalize_solid_scale_for_boolean!(target) if normalize_target_scale
             original_name = target.respond_to?(:name) ? target.name.to_s : ''
             original_material = target.respond_to?(:material) ? target.material : nil
             original_layer = target.respond_to?(:layer) ? target.layer : nil
@@ -128,13 +140,23 @@ module SonVu
             tenons.transform!(transformation) if transformation
             raise 'Khối mộng dương tạo ra chưa phải solid hợp lệ.' unless tenons.manifold?
 
-            result = target.union(tenons)
-            unless result && result.valid? && result.respond_to?(:manifold?) && result.manifold?
-              raise 'SketchUp không thể hợp mộng dương với chi tiết. Hãy kiểm tra mộng có giao với mặt đã chọn không.'
+            target_before = boolean_entity_diagnostic(target)
+            tenons_before = boolean_entity_diagnostic(tenons)
+            union_result = target.union(tenons)
+            result = union_result
+            outer_shell_result = nil
+            if !boolean_solid?(result) && boolean_solid?(target) && boolean_solid?(tenons) &&
+               target.respond_to?(:outer_shell)
+              outer_shell_result = target.outer_shell(tenons)
+              result = outer_shell_result
+            end
+            unless boolean_solid?(result)
+              raise 'SketchUp union/outer_shell không trả về solid hợp lệ. ' \
+                    "union_result=#{boolean_entity_diagnostic(union_result)}; " \
+                    "outer_shell_result=#{boolean_entity_diagnostic(outer_shell_result)}; " \
+                    "target_before=#{target_before}; tenons_before=#{tenons_before}"
             end
 
-            tenons.erase! if tenons.valid? && tenons != result
-            target.erase! if target.valid? && target != result
             if preserve_target_properties
               apply_target_properties(result, properties, fallback_name: 'SonVu_CNC_Tenon_Result')
             else
@@ -163,6 +185,144 @@ module SonVu
         rescue StandardError
           model.abort_operation if manage_operation
           raise
+        end
+
+        def boolean_solid?(entity)
+          entity &&
+            (!entity.respond_to?(:valid?) || entity.valid?) &&
+            entity.respond_to?(:manifold?) &&
+            entity.manifold?
+        rescue StandardError
+          false
+        end
+
+        def boolean_entity_diagnostic(entity)
+          return 'nil' unless entity
+
+          values = ["class=#{entity.class}"]
+          values << "valid=#{boolean_diagnostic_value(entity, :valid?)}"
+          values << "manifold=#{boolean_diagnostic_value(entity, :manifold?)}"
+          values << "persistent_id=#{boolean_diagnostic_value(entity, :persistent_id)}"
+          bounds = boolean_bounds_diagnostic(entity)
+          values << "bounds=#{bounds}" if bounds
+          "{#{values.join(', ')}}"
+        rescue StandardError => error
+          "{diagnostic_error=#{error.class}: #{error.message}}"
+        end
+
+        def boolean_diagnostic_value(entity, method_name)
+          return 'unsupported' unless entity.respond_to?(method_name)
+
+          entity.public_send(method_name)
+        rescue StandardError => error
+          "#{error.class}:#{error.message}"
+        end
+
+        def boolean_bounds_diagnostic(entity)
+          return nil unless entity.respond_to?(:bounds)
+
+          bounds = entity.bounds
+          return nil unless bounds
+
+          minimum = bounds.respond_to?(:min) ? bounds.min : nil
+          maximum = bounds.respond_to?(:max) ? bounds.max : nil
+          dimensions = [:width, :height, :depth].map do |method_name|
+            bounds.respond_to?(method_name) ? bounds.public_send(method_name) : nil
+          end
+          "min=#{boolean_point_diagnostic(minimum)}, " \
+            "max=#{boolean_point_diagnostic(maximum)}, size=#{dimensions.inspect}"
+        rescue StandardError => error
+          "error=#{error.class}:#{error.message}"
+        end
+
+        def boolean_point_diagnostic(point)
+          return nil unless point
+
+          [point.x, point.y, point.z]
+        rescue StandardError
+          point.to_s
+        end
+
+        def normalize_solid_scale_for_boolean!(target)
+          transformation = target.respond_to?(:transformation) ? target.transformation : nil
+          return target unless transformation
+
+          axes = transformation_axes(transformation)
+          return target unless scale_normalization_required?(axes)
+
+          normalized_axes = axes.map { |axis| normalized_boolean_axis(axis) }
+          validate_orthogonal_boolean_axes!(normalized_axes)
+          rigid = Geom::Transformation.axes(
+            transformation.origin,
+            normalized_axes[0],
+            normalized_axes[1],
+            normalized_axes[2]
+          )
+          local_bake = rigid.inverse * transformation
+          entities = target_geometry_entities(target)
+          content = entities.to_a
+          transformed = entities.transform_entities(local_bake, content)
+          if !content.empty? && transformed == false
+            raise 'Không thể đưa tỷ lệ instance vào hình học trước phép Boolean.'
+          end
+          unless target.respond_to?(:transformation=)
+            raise 'Không thể chuẩn hóa transformation của solid trước phép Boolean.'
+          end
+
+          target.transformation = rigid
+          unless boolean_solid?(target)
+            raise 'Solid không còn hợp lệ sau khi chuẩn hóa tỷ lệ instance.'
+          end
+
+          target
+        end
+
+        def transformation_axes(transformation)
+          axes = [:xaxis, :yaxis, :zaxis].map do |method_name|
+            unless transformation.respond_to?(method_name)
+              raise 'Không đọc được các trục transformation của solid.'
+            end
+
+            transformation.public_send(method_name)
+          end
+          if axes.any? { |axis| boolean_axis_length(axis) <= BOOLEAN_TRANSFORM_EPSILON }
+            raise 'Transformation của solid có trục tỷ lệ bằng 0.'
+          end
+
+          axes
+        end
+
+        def scale_normalization_required?(axes)
+          axes.any? { |axis| (boolean_axis_length(axis) - 1.0).abs > BOOLEAN_TRANSFORM_EPSILON }
+        end
+
+        def normalized_boolean_axis(axis)
+          length = boolean_axis_length(axis)
+          Geom::Vector3d.new(axis.x / length, axis.y / length, axis.z / length)
+        end
+
+        def validate_orthogonal_boolean_axes!(axes)
+          pairs = [[axes[0], axes[1]], [axes[0], axes[2]], [axes[1], axes[2]]]
+          return if pairs.all? { |first, second| boolean_axis_dot(first, second).abs <= BOOLEAN_ORTHOGONAL_TOLERANCE }
+
+          raise 'Transformation của solid có shear nên không thể chuẩn hóa an toàn cho phép Boolean.'
+        end
+
+        def target_geometry_entities(target)
+          return target.entities if target.respond_to?(:entities)
+
+          definition = target.respond_to?(:definition) ? target.definition : nil
+          return definition.entities if definition && definition.respond_to?(:entities)
+
+          raise 'Không tìm thấy hình học bên trong solid để chuẩn hóa tỷ lệ.'
+        end
+
+        def boolean_axis_length(axis)
+          Math.sqrt((axis.x * axis.x) + (axis.y * axis.y) + (axis.z * axis.z))
+        end
+
+        def boolean_axis_dot(first, second)
+          (first.x * second.x) + (first.y * second.y) + (first.z * second.z)
         end
 
         def capture_target_properties(target)
@@ -245,11 +405,25 @@ module SonVu
         def mortise_cut_geometry(params, origin)
           overlap = CNCPlugins::Units.millimeters_to_model_units(MORTISE_CUT_OVERLAP_MM)
           cutter_params = params.merge(mortise_depth: params.fetch(:mortise_depth) + overlap)
+          if mortise_spans_face_height?(params)
+            cutter_params[:mortise_height] = params.fetch(:mortise_height) + (overlap * 2.0)
+          end
           if params[:mortise_model_depth]
             cutter_params[:mortise_model_depth] = params[:mortise_model_depth] + overlap
           end
           cutter_origin = Geom::Point3d.new(origin.x, origin.y, origin.z + overlap)
           [cutter_params, cutter_origin]
+        end
+
+        def mortise_spans_face_height?(params)
+          mortise_height = params[:mortise_height]
+          face_height = params[:mortise_face_height]
+          return false unless mortise_height&.positive? && face_height&.positive?
+
+          tolerance = CNCPlugins::Units.millimeters_to_model_units(
+            MORTISE_FACE_MATCH_TOLERANCE_MM
+          )
+          (mortise_height - face_height).abs <= tolerance
         end
 
         def create_cut_backup(target)

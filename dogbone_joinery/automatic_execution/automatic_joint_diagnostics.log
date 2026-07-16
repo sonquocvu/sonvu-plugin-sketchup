@@ -1,0 +1,95 @@
+
+=== SonVu Automatic Joint Diagnostic SVJ-20260716-181351-0244-001 ===
+time=2026-07-16 18:13:51 +0700
+code=mortise_geometry_failed
+error_class=SonVu::CNCPlugins::DogboneJoinery::AutomaticExecution::JointExecutionFailure
+message=Không thể cắt mộng âm tại vị trí đã xem trước. Toàn bộ thay đổi đã được hoàn tác.
+root_detail=SketchUp không cắt được khối thành một solid hợp lệ. Vui lòng kiểm tra vị trí và kích thước mộng.
+context={:error_class=>"RuntimeError", :error_message=>"SketchUp không cắt được khối thành một solid hợp lệ. Vui lòng kiểm tra vị trí và kích thước mộng.", :execution_role=>"mortise", :connection_id=>"connection:part:77286/75757|part:77286/75764|20480|3297|20000|0|0|1000000", :joint_id=>"connection:part:77286/75757|part:77286/75764|20480|3297|20000|0|0|1000000:joint:1", :target_part_id=>"part:77286/75764", :target=>{:ruby_class=>"Sketchup::Group", :name=>"Đình C1", :persistent_id=>75764, :entity_id=>17159, :valid=>true, :manifold=>true, :transformation=>[3.4717314487632533, 0.0, 0.0, 0.0, 0.0, 0.9275, 0.0, 0.0, 0.0, 0.0, 1.0294117647058814, 0.0, 0.688976377952756, 0.7480314960629921, 78.05118110236221, 1.0]}, :parameters=>{:mortise_width=>1.5748031496062993, :mortise_height=>0.6889763779527556, :mortise_depth=>0.3937007874015748, :mortise_face_width=>77.36220472440945, :mortise_face_height=>0.6889763779527556, :mortise_model_depth=>0.6889763779527556, :cutter_radius=>0.11811023622047245, :clearance=>0.007874015748031498, :dogbone_style=>"Dọc (T-bone)", :create_mortise=>true, :create_tenon=>false, :add_labels=>false}, :placement=>{:center=>[2.263779527559066, 1.0925196850393704, 78.74015748031496], :x_axis=>[1.0, 0.0, 0.0], :y_axis=>[0.0, 1.0, 0.0], :z_axis=>[0.0, 0.0, 1.0], :execution_direction=>[0.0, 0.0, -1.0]}}
+backtrace:
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/geometry_adapter.rb:114:in `rescue in generate_mortise'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/geometry_adapter.rb:100:in `generate_mortise'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/executor.rb:67:in `block (2 levels) in execute'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/executor.rb:293:in `with_joint_diagnostic_context'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/executor.rb:66:in `block in execute'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/executor.rb:53:in `each'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/executor.rb:53:in `execute'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_planning/preview_session.rb:482:in `handle_ready_for_generation'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_planning/preview_session.rb:540:in `block in configure_dialog'
+=== End SVJ-20260716-181351-0244-001 ===
+
+=== SonVu Automatic Joint Diagnostic SVJ-20260716-181819-0258-001 ===
+time=2026-07-16 18:18:19 +0700
+code=mortise_geometry_failed
+error_class=SonVu::CNCPlugins::DogboneJoinery::AutomaticExecution::JointExecutionFailure
+message=Không thể cắt mộng âm tại vị trí đã xem trước. Toàn bộ thay đổi đã được hoàn tác.
+root_detail=SketchUp không cắt được khối thành một solid hợp lệ. Vui lòng kiểm tra vị trí và kích thước mộng.
+context={:error_class=>"RuntimeError", :error_message=>"SketchUp không cắt được khối thành một solid hợp lệ. Vui lòng kiểm tra vị trí và kích thước mộng.", :execution_role=>"mortise", :connection_id=>"connection:part:77286/75757|part:77286/75764|20480|3297|20000|0|0|1000000", :joint_id=>"connection:part:77286/75757|part:77286/75764|20480|3297|20000|0|0|1000000:joint:1", :target_part_id=>"part:77286/75764", :target=>{:ruby_class=>"Sketchup::Group", :name=>"Đình C1", :persistent_id=>75764, :entity_id=>17159, :valid=>true, :manifold=>true, :transformation=>[3.4717314487632533, 0.0, 0.0, 0.0, 0.0, 0.9275, 0.0, 0.0, 0.0, 0.0, 1.0294117647058814, 0.0, 0.688976377952756, 0.7480314960629921, 78.05118110236221, 1.0]}, :parameters=>{:mortise_width=>1.5748031496062993, :mortise_height=>0.6889763779527556, :mortise_depth=>0.3937007874015748, :mortise_face_width=>77.36220472440945, :mortise_face_height=>0.6889763779527556, :mortise_model_depth=>0.6889763779527556, :cutter_radius=>0.11811023622047245, :clearance=>0.007874015748031498, :dogbone_style=>"Dọc (T-bone)", :create_mortise=>true, :create_tenon=>false, :add_labels=>false}, :placement=>{:center=>[2.263779527559066, 1.0925196850393704, 78.74015748031496], :x_axis=>[1.0, 0.0, 0.0], :y_axis=>[0.0, 1.0, 0.0], :z_axis=>[0.0, 0.0, 1.0], :execution_direction=>[0.0, 0.0, -1.0]}}
+backtrace:
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/geometry_adapter.rb:114:in `rescue in generate_mortise'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/geometry_adapter.rb:100:in `generate_mortise'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/executor.rb:67:in `block (2 levels) in execute'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/executor.rb:293:in `with_joint_diagnostic_context'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/executor.rb:66:in `block in execute'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/executor.rb:53:in `each'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/executor.rb:53:in `execute'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_planning/preview_session.rb:482:in `handle_ready_for_generation'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_planning/preview_session.rb:540:in `block in configure_dialog'
+=== End SVJ-20260716-181819-0258-001 ===
+
+=== SonVu Automatic Joint Diagnostic SVJ-20260716-183322-0244-001 ===
+time=2026-07-16 18:33:22 +0700
+code=mortise_geometry_failed
+error_class=SonVu::CNCPlugins::DogboneJoinery::AutomaticExecution::JointExecutionFailure
+message=Không thể cắt mộng âm tại vị trí đã xem trước. Toàn bộ thay đổi đã được hoàn tác.
+root_detail=SketchUp không cắt được khối thành một solid hợp lệ. Vui lòng kiểm tra vị trí và kích thước mộng.
+context={:error_class=>"RuntimeError", :error_message=>"SketchUp không cắt được khối thành một solid hợp lệ. Vui lòng kiểm tra vị trí và kích thước mộng.", :execution_role=>"mortise", :connection_id=>"connection:part:77286/75757|part:77286/75764|20480|3297|20000|0|0|1000000", :joint_id=>"connection:part:77286/75757|part:77286/75764|20480|3297|20000|0|0|1000000:joint:1", :target_part_id=>"part:77286/75764", :target=>{:ruby_class=>"Sketchup::Group", :name=>"Đình C1", :persistent_id=>75764, :entity_id=>17159, :valid=>true, :manifold=>true, :transformation=>[3.4717314487632533, 0.0, 0.0, 0.0, 0.0, 0.9275, 0.0, 0.0, 0.0, 0.0, 1.0294117647058814, 0.0, 0.688976377952756, 0.7480314960629921, 78.05118110236221, 1.0]}, :parameters=>{:mortise_width=>1.5748031496062993, :mortise_height=>0.6889763779527556, :mortise_depth=>0.3937007874015748, :mortise_face_width=>77.36220472440945, :mortise_face_height=>0.6889763779527556, :mortise_model_depth=>0.6889763779527556, :cutter_radius=>0.11811023622047245, :clearance=>0.007874015748031498, :dogbone_style=>"Dọc (T-bone)", :create_mortise=>true, :create_tenon=>false, :add_labels=>false}, :placement=>{:center=>[2.263779527559066, 1.0925196850393704, 78.74015748031496], :x_axis=>[1.0, 0.0, 0.0], :y_axis=>[0.0, 1.0, 0.0], :z_axis=>[0.0, 0.0, 1.0], :execution_direction=>[0.0, 0.0, -1.0]}}
+backtrace:
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/geometry_adapter.rb:116:in `rescue in generate_mortise'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/geometry_adapter.rb:101:in `generate_mortise'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/executor.rb:67:in `block (2 levels) in execute'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/executor.rb:293:in `with_joint_diagnostic_context'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/executor.rb:66:in `block in execute'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/executor.rb:53:in `each'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/executor.rb:53:in `execute'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_planning/preview_session.rb:482:in `handle_ready_for_generation'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_planning/preview_session.rb:540:in `block in configure_dialog'
+=== End SVJ-20260716-183322-0244-001 ===
+
+=== SonVu Automatic Joint Diagnostic SVJ-20260716-184346-0244-001 ===
+time=2026-07-16 18:43:46 +0700
+code=mortise_geometry_failed
+error_class=SonVu::CNCPlugins::DogboneJoinery::AutomaticExecution::JointExecutionFailure
+message=Không thể cắt mộng âm tại vị trí đã xem trước. Toàn bộ thay đổi đã được hoàn tác.
+root_detail=SketchUp không cắt được khối thành một solid hợp lệ. Vui lòng kiểm tra vị trí và kích thước mộng.
+context={:error_class=>"RuntimeError", :error_message=>"SketchUp không cắt được khối thành một solid hợp lệ. Vui lòng kiểm tra vị trí và kích thước mộng.", :execution_role=>"mortise", :connection_id=>"connection:part:77286/75757|part:77286/75764|20480|3297|20000|0|0|1000000", :joint_id=>"connection:part:77286/75757|part:77286/75764|20480|3297|20000|0|0|1000000:joint:1", :target_part_id=>"part:77286/75764", :target=>{:ruby_class=>"Sketchup::Group", :name=>"Đình C1", :persistent_id=>75764, :entity_id=>17159, :valid=>true, :manifold=>true, :transformation=>[3.4717314487632533, 0.0, 0.0, 0.0, 0.0, 0.9275, 0.0, 0.0, 0.0, 0.0, 1.0294117647058814, 0.0, 0.688976377952756, 0.7480314960629921, 78.05118110236221, 1.0]}, :parameters=>{:mortise_width=>1.5748031496062993, :mortise_height=>0.6889763779527556, :mortise_depth=>0.3937007874015748, :mortise_face_width=>77.36220472440945, :mortise_face_height=>0.6889763779527556, :mortise_model_depth=>0.6889763779527556, :cutter_radius=>0.11811023622047245, :clearance=>0.007874015748031498, :dogbone_style=>"Dọc (T-bone)", :create_mortise=>true, :create_tenon=>false, :add_labels=>false}, :placement=>{:center=>[2.263779527559066, 1.0925196850393704, 78.74015748031496], :x_axis=>[1.0, 0.0, 0.0], :y_axis=>[0.0, 1.0, 0.0], :z_axis=>[0.0, 0.0, 1.0], :execution_direction=>[0.0, 0.0, -1.0]}}
+backtrace:
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/geometry_adapter.rb:116:in `rescue in generate_mortise'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/geometry_adapter.rb:101:in `generate_mortise'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/executor.rb:67:in `block (2 levels) in execute'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/executor.rb:293:in `with_joint_diagnostic_context'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/executor.rb:66:in `block in execute'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/executor.rb:53:in `each'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/executor.rb:53:in `execute'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_planning/preview_session.rb:483:in `handle_ready_for_generation'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_planning/preview_session.rb:545:in `block in configure_dialog'
+=== End SVJ-20260716-184346-0244-001 ===
+
+=== SonVu Automatic Joint Diagnostic SVJ-20260716-191627-0244-001 ===
+time=2026-07-16 19:16:27 +0700
+code=tenon_geometry_failed
+error_class=SonVu::CNCPlugins::DogboneJoinery::AutomaticExecution::JointExecutionFailure
+message=Không thể tạo mộng dương tại vị trí đã xem trước. Toàn bộ thay đổi đã được hoàn tác.
+root_detail=SketchUp không thể hợp mộng dương với chi tiết. Hãy kiểm tra mộng có giao với mặt đã chọn không.
+context={:error_class=>"RuntimeError", :error_message=>"SketchUp không thể hợp mộng dương với chi tiết. Hãy kiểm tra mộng có giao với mặt đã chọn không.", :execution_role=>"tenon", :connection_id=>"connection:part:77286/75757|part:77286/75764|20480|3297|20000|0|0|1000000", :joint_id=>"connection:part:77286/75757|part:77286/75764|20480|3297|20000|0|0|1000000:joint:2", :target_part_id=>"part:77286/75757", :target=>{:ruby_class=>"Sketchup::Group", :name=>"Xà Trước C1", :persistent_id=>141830, :entity_id=>187818, :valid=>true, :manifold=>true, :transformation=>[1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.4803149606299324, 0.7519685039370083, 78.34645669291339, 1.0]}, :parameters=>{:tenon_width=>1.5748031496062993, :tenon_height=>0.6889763779527556, :tenon_projection=>0.3937007874015748, :tenon_cutter_radius=>0.11811023622047245, :clearance=>0.007874015748031498, :tenon_count=>1, :tenon_edge_offset=>0.0, :tenon_face_width=>nil, :tenon_relief_enabled=>true, :create_mortise=>false, :create_tenon=>true, :add_labels=>false}, :placement=>{:center=>[76.47637795275591, 1.0925196850393704, 78.74015748031496], :x_axis=>[1.0, 0.0, 0.0], :y_axis=>[-0.0, -1.0, -0.0], :z_axis=>[0.0, 0.0, -1.0], :execution_direction=>[0.0, 0.0, -1.0]}}
+backtrace:
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/geometry_adapter.rb:93:in `rescue in generate_tenon'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/geometry_adapter.rb:67:in `generate_tenon'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/executor.rb:55:in `block (2 levels) in execute'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/executor.rb:293:in `with_joint_diagnostic_context'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/executor.rb:54:in `block in execute'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/executor.rb:53:in `each'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_execution/executor.rb:53:in `execute'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_planning/preview_session.rb:483:in `handle_ready_for_generation'
+  C:/Users/vuquo/AppData/Roaming/SketchUp/SketchUp 2023/SketchUp/Plugins/sonvu_cnc_plugins/dogbone_joinery/automatic_planning/preview_session.rb:545:in `block in configure_dialog'
+=== End SVJ-20260716-191627-0244-001 ===

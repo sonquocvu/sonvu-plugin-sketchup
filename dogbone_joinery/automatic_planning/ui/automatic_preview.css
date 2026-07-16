@@ -51,6 +51,8 @@ details ul { margin: 6px 0 0; padding-left: 20px; }
 .banner { margin-bottom: 11px; border: 1px solid; border-radius: 8px; padding: 9px 11px; font-weight: 750; }
 .banner.stale { border-color: #d4ad47; background: #fff7df; color: #795714; }
 .banner.error { border-color: #dda6a3; background: #fff0ef; color: #9e2823; }
+.diagnostic-panel { margin: -3px 0 11px; border: 1px solid #d5c8a8; border-radius: 8px; background: #fffaf0; padding: 9px 11px; }
+.diagnostic-panel pre { margin: 8px 0 0; overflow-wrap: anywhere; white-space: pre-wrap; color: #4f4430; font: 11px/1.45 Consolas, monospace; }
 .actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 button { min-height: 39px; border: 1px solid var(--green); border-radius: 8px; padding: 8px 12px; background: var(--green); color: #fff; font-weight: 800; cursor: pointer; }
 button:hover:not(:disabled) { background: var(--green-dark); }

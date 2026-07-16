@@ -32,10 +32,12 @@ module SonVu
           def initialize(geometry_adapter: ManualGeometryExecutionAdapter.new,
                          parameter_adapter: GeometryParameterAdapter.new,
                          transform_adapter: JointTransformAdapter.new,
+                         diagnostic_logger: AutomaticJointDiagnosticLogger.new,
                          active_model_provider: nil)
             @geometry_adapter = geometry_adapter
             @parameter_adapter = parameter_adapter
             @transform_adapter = transform_adapter
+            @diagnostic_logger = diagnostic_logger
             @active_model_provider = active_model_provider || lambda { Sketchup.active_model }
           end
 
@@ -49,22 +51,28 @@ module SonVu
             executed_connection_ids = {}
 
             prepared.each do |item|
-              tenon_result = @geometry_adapter.generate_tenon(
-                target: item.male_reference.entity,
-                params: item.tenon_params,
-                placement: item.male_placement,
-                parent_entities: item.male_reference.parent_entities
-              )
-              validate_generated_result!(tenon_result, 'tenon_generation_failed', item)
+              tenon_result = with_joint_diagnostic_context(item, :tenon) do
+                result = @geometry_adapter.generate_tenon(
+                  target: item.male_reference.entity,
+                  params: item.tenon_params,
+                  placement: item.male_placement,
+                  parent_entities: item.male_reference.parent_entities
+                )
+                validate_generated_result!(result, 'tenon_generation_failed', item)
+                result
+              end
               registry.replace(item.connection.male_part_identity, tenon_result)
 
-              mortise_result = @geometry_adapter.generate_mortise(
-                target: item.female_reference.entity,
-                params: item.mortise_params,
-                placement: item.female_placement,
-                parent_entities: item.female_reference.parent_entities
-              )
-              validate_generated_result!(mortise_result, 'mortise_generation_failed', item)
+              mortise_result = with_joint_diagnostic_context(item, :mortise) do
+                result = @geometry_adapter.generate_mortise(
+                  target: item.female_reference.entity,
+                  params: item.mortise_params,
+                  placement: item.female_placement,
+                  parent_entities: item.female_reference.parent_entities
+                )
+                validate_generated_result!(result, 'mortise_generation_failed', item)
+                result
+              end
               registry.replace(item.connection.female_part_identity, mortise_result)
               executed_connection_ids[item.connection.stable_id] = true
             end
@@ -78,20 +86,20 @@ module SonVu
             )
           rescue JointExecutionFailure => error
             abort_operation(model) if operation_started
-            log_failure(error)
+            diagnostic = log_failure(error)
             JointExecutionResult.failure(
               code: error.code,
               user_message: error.message,
-              details: error_details(error),
+              details: error_details(error, diagnostic),
               skipped_count: request ? request.skipped_planning_count : 0
             )
           rescue StandardError => error
             abort_operation(model) if operation_started
-            log_failure(error)
+            diagnostic = log_failure(error)
             JointExecutionResult.failure(
               code: 'unexpected_execution_failure',
               user_message: FAILURE_MESSAGE,
-              details: error_details(error),
+              details: error_details(error, diagnostic),
               skipped_count: request ? request.skipped_planning_count : 0
             )
           end
@@ -280,6 +288,104 @@ module SonVu
             )
           end
 
+          def with_joint_diagnostic_context(item, role)
+            context = joint_diagnostic_context(item, role)
+            yield
+          rescue JointExecutionFailure => error
+            wrapped = JointExecutionFailure.new(
+              error.code,
+              error.message,
+              error.details.merge(context)
+            )
+            wrapped.set_backtrace(error.backtrace)
+            raise wrapped
+          rescue StandardError => error
+            code = role == :tenon ? 'tenon_geometry_failed' : 'mortise_geometry_failed'
+            message = if role == :tenon
+                        'Không thể tạo mộng dương tại vị trí đã xem trước. Toàn bộ thay đổi đã được hoàn tác.'
+                      else
+                        'Không thể cắt mộng âm tại vị trí đã xem trước. Toàn bộ thay đổi đã được hoàn tác.'
+                      end
+            raise JointExecutionFailure.new(
+              code,
+              message,
+              context.merge(error_class: error.class.name, error_message: error.message)
+            )
+          end
+
+          def joint_diagnostic_context(item, role)
+            reference = role == :tenon ? item.male_reference : item.female_reference
+            placement = role == :tenon ? item.male_placement : item.female_placement
+            params = role == :tenon ? item.tenon_params : item.mortise_params
+            {
+              execution_role: role.to_s,
+              connection_id: item.connection.stable_id,
+              joint_id: item.joint.stable_id,
+              target_part_id: reference.identity.stable_id,
+              target: entity_diagnostic_snapshot(reference.entity),
+              parameters: scalar_hash(params),
+              placement: placement_diagnostic_snapshot(placement)
+            }
+          end
+
+          def entity_diagnostic_snapshot(entity)
+            {
+              ruby_class: entity.class.name,
+              name: safe_entity_value(entity, :name),
+              persistent_id: safe_entity_value(entity, :persistent_id),
+              entity_id: safe_entity_value(entity, :entityID),
+              valid: safe_entity_value(entity, :valid?),
+              manifold: safe_entity_value(entity, :manifold?),
+              transformation: transformation_values(entity)
+            }
+          end
+
+          def safe_entity_value(entity, method_name)
+            return nil unless entity.respond_to?(method_name)
+
+            entity.public_send(method_name)
+          rescue StandardError => error
+            "#{error.class}: #{error.message}"
+          end
+
+          def transformation_values(entity)
+            transformation = safe_entity_value(entity, :transformation)
+            return nil unless transformation
+            return transformation.to_a if transformation.respond_to?(:to_a)
+            return transformation.values if transformation.respond_to?(:values)
+
+            transformation.to_s
+          end
+
+          def scalar_hash(values)
+            values.to_h.each_with_object({}) do |(key, value), result|
+              result[key] = if value.nil? || value.is_a?(Numeric) || value.is_a?(String) ||
+                               value.is_a?(Symbol) || value == true || value == false
+                              value
+                            else
+                              value.to_s
+                            end
+            end
+          end
+
+          def placement_diagnostic_snapshot(placement)
+            {
+              center: xyz_values(placement.center),
+              x_axis: xyz_values(placement.x_axis),
+              y_axis: xyz_values(placement.y_axis),
+              z_axis: xyz_values(placement.z_axis),
+              execution_direction: xyz_values(placement.execution_direction)
+            }
+          end
+
+          def xyz_values(value)
+            return nil unless value
+
+            [value.x, value.y, value.z]
+          rescue StandardError
+            value.to_s
+          end
+
           def ensure_unique_targets!(registry)
             registry.ensure_unique_all!
           rescue JointExecutionFailure
@@ -298,23 +404,32 @@ module SonVu
             raise JointExecutionFailure.new(code, INTEGRITY_MESSAGE)
           end
 
-          def error_details(error)
+          def error_details(error, diagnostic = nil)
             details = {
               error_class: error.class.name,
               message: error.message
             }
             details[:context] = error.details if error.respond_to?(:details)
+            if diagnostic
+              details[:diagnostic_id] = diagnostic.id
+              details[:diagnostic_log_path] = diagnostic.path
+              details[:diagnostic_detail] = diagnostic.detail
+            end
             details
           end
 
           def log_failure(error)
-            return unless defined?(ENV) && ENV['SONVU_CNC_DEBUG'] == '1'
-
-            $stderr.puts("[SonVu CNC] automatic_joint_failure=#{error.class}: #{error.message}")
-            if error.respond_to?(:details) && !error.details.empty?
-              $stderr.puts("[SonVu CNC] automatic_joint_details=#{error.details.inspect}")
+            @diagnostic_logger.record(error)
+          rescue StandardError => log_error
+            Kernel.puts(
+              "[SonVu CNC] diagnostic_logger_failure=#{log_error.class}: #{log_error.message}"
+            )
+            Kernel.puts("#{error.class}: #{error.message}")
+            error.backtrace.to_a.each { |line| Kernel.puts("  #{line}") }
+            if defined?(::SKETCHUP_CONSOLE) && ::SKETCHUP_CONSOLE.respond_to?(:show)
+              ::SKETCHUP_CONSOLE.show
             end
-            $stderr.puts(error.backtrace.join("\n")) if error.backtrace
+            nil
           end
 
           def abort_operation(model)

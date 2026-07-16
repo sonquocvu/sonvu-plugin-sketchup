@@ -2,6 +2,8 @@
 
 require 'minitest/autorun'
 require 'ripper'
+require 'stringio'
+require 'tmpdir'
 
 module Sketchup
   class ModelObserver; end unless const_defined?(:ModelObserver)
@@ -193,6 +195,28 @@ module SonVu
               "result-#{calls.length}",
               definition_id: "result-definition-#{calls.length}",
               parent: parent_entities
+            )
+          end
+        end
+
+        class RecordingDiagnosticLogger
+          attr_reader :errors
+
+          def initialize
+            @errors = []
+          end
+
+          def record(error)
+            errors << error
+            detail = if error.respond_to?(:details)
+                       error.details[:error_message] || error.message
+                     else
+                       error.message
+                     end
+            Execution::AutomaticJointDiagnosticLogger::Entry.new(
+              'SVJ-TEST-001',
+              'C:\\SonVu\\automatic_joint_diagnostics.log',
+              detail
             )
           end
         end
@@ -549,17 +573,62 @@ module SonVu
           assert_equal 0, @last_model.abort_count
         end
 
-        def test_unexpected_failure_aborts_complete_batch
+        def test_geometry_failure_aborts_complete_batch_with_diagnostics
           geometry = RecordingGeometryAdapter.new(fail_on_call: 3)
 
           result = execute(geometry: geometry)
 
           refute result.success?
-          assert_equal 'unexpected_execution_failure', result.failure_code
+          assert_equal 'tenon_geometry_failed', result.failure_code
           assert_equal 1, @last_model.started_operations.length
           assert_equal 0, @last_model.commit_count
           assert_equal 1, @last_model.abort_count
           assert_operator geometry.calls.length, :>, 2
+          assert_equal 'SVJ-TEST-001', result.failure_details[:diagnostic_id]
+          assert_equal 'Lỗi boolean thử nghiệm.', result.failure_details[:diagnostic_detail]
+          assert_equal 'tenon', result.failure_details[:context][:execution_role]
+          assert_includes result.failure_details[:diagnostic_log_path], 'automatic_joint_diagnostics.log'
+        end
+
+        def test_diagnostic_logger_writes_root_error_context_and_backtrace
+          path = File.join(Dir.tmpdir, "sonvu-joint-diagnostic-#{object_id}.log")
+          console = StringIO.new
+          console_controller = Struct.new(:show_count) do
+            def show
+              self.show_count += 1
+            end
+          end.new(0)
+          clock = lambda { Time.new(2026, 7, 16, 18, 30, 0, '+07:00') }
+          logger = Execution::AutomaticJointDiagnosticLogger.new(
+            path: path,
+            clock: clock,
+            console: console,
+            console_controller: console_controller
+          )
+          error = Execution::JointExecutionFailure.new(
+            'mortise_geometry_failed',
+            'Không thể cắt mộng âm.',
+            execution_role: 'mortise',
+            connection_id: 'connection-1',
+            joint_id: 'joint-1',
+            error_message: 'SketchUp subtract trả về nil.'
+          )
+          error.set_backtrace(['geometry.rb:88', 'executor.rb:66'])
+
+          entry = logger.record(error)
+          content = File.read(path, encoding: 'UTF-8')
+
+          assert_match(/\ASVJ-20260716-183000-[0-9A-F]{4}-001\z/, entry.id)
+          assert_equal path, entry.path
+          assert_equal 'SketchUp subtract trả về nil.', entry.detail
+          assert_includes content, 'code=mortise_geometry_failed'
+          assert_includes content, 'execution_role: "mortise"'
+          assert_includes content, 'connection_id: "connection-1"'
+          assert_includes content, 'geometry.rb:88'
+          assert_includes console.string, entry.id
+          assert_operator console_controller.show_count, :>=, 1
+        ensure
+          File.delete(path) if path && File.exist?(path)
         end
 
         def test_invalid_generated_solid_aborts_batch
@@ -610,8 +679,10 @@ module SonVu
           assert_equal false, mortise_keywords[:create_backup]
           assert_equal false, tenon_keywords[:ensure_unique]
           assert_equal false, tenon_keywords[:apply_template_material]
+          assert_equal true, tenon_keywords[:normalize_target_scale]
           assert_equal true, tenon_keywords[:preserve_target_properties]
           assert_equal true, mortise_keywords[:preserve_target_properties]
+          assert_equal true, mortise_keywords[:normalize_target_scale]
         end
 
         def test_manual_geometry_adapter_reports_the_failing_boolean_stage_safely
@@ -799,7 +870,12 @@ module SonVu
           dialog = FakeDialog.new
           failure = Execution::JointExecutionResult.failure(
             code: 'test_failure',
-            user_message: 'Không thể hoàn tất việc tạo mộng.'
+            user_message: 'Không thể hoàn tất việc tạo mộng.',
+            details: {
+              diagnostic_id: 'SVJ-TEST-001',
+              diagnostic_detail: 'SketchUp subtract trả về nil.',
+              diagnostic_log_path: 'C:\\SonVu\\automatic_joint_diagnostics.log'
+            }
           )
           session = Planning::PreviewSession.new(
             model: model,
@@ -816,6 +892,40 @@ module SonVu
           refute dialog.closed
           assert dialog.scripts.any? { |script| script.include?('setGenerating(false)') }
           assert dialog.scripts.any? { |script| script.include?('showError') }
+          assert dialog.scripts.any? { |script| script.include?('SVJ-TEST-001') }
+          assert dialog.scripts.any? { |script| script.include?('subtract trả về nil') }
+        end
+
+        def test_unexpected_preview_execution_failure_is_logged_with_backtrace_and_shown
+          state = calculated_state
+          model = FakeModel.new
+          dialog = FakeDialog.new
+          logger = RecordingDiagnosticLogger.new
+          executor = Class.new do
+            def execute(**_arguments)
+              raise 'Lỗi ngoài executor cần chẩn đoán.'
+            end
+          end.new
+          session = Planning::PreviewSession.new(
+            model: model,
+            resolution: empty_resolution,
+            state: state,
+            executor: executor,
+            diagnostic_logger: logger
+          )
+          session.instance_variable_set(:@dialog, dialog)
+
+          returned = session.handle_ready_for_generation
+
+          assert_nil returned
+          assert state.stale
+          assert_equal 1, logger.errors.length
+          assert_equal 'Lỗi ngoài executor cần chẩn đoán.', logger.errors.first.message
+          refute_empty logger.errors.first.backtrace
+          assert dialog.scripts.any? { |script| script.include?('setGenerating(false)') }
+          assert dialog.scripts.any? { |script| script.include?('unexpected_execution_failure') }
+          assert dialog.scripts.any? { |script| script.include?('SVJ-TEST-001') }
+          assert dialog.scripts.any? { |script| script.include?('Lỗi ngoài executor cần chẩn đoán') }
         end
 
         def test_automatic_execution_production_code_is_ruby_27_compatible
@@ -887,6 +997,7 @@ module SonVu
             geometry_adapter: @last_geometry,
             parameter_adapter: RecordingParameterAdapter.new,
             transform_adapter: Execution::JointTransformAdapter.new,
+            diagnostic_logger: (@last_diagnostic_logger = RecordingDiagnosticLogger.new),
             active_model_provider: lambda { @last_model }
           )
           executor.execute(

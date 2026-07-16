@@ -84,7 +84,8 @@ module SonVu
               update_selection: false,
               parent_entities: parent_entities,
               preserve_target_properties: true,
-              apply_template_material: false
+              apply_template_material: false,
+              normalize_target_scale: true
             )
           rescue JointExecutionFailure
             raise
@@ -106,7 +107,8 @@ module SonVu
               manage_operation: false,
               create_backup: false,
               parent_entities: parent_entities,
-              preserve_target_properties: true
+              preserve_target_properties: true,
+              normalize_target_scale: true
             )
           rescue JointExecutionFailure
             raise
