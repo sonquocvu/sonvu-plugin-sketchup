@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Thông số ngăn kéo</title>
+  <link rel="stylesheet" href="specification_editor.css">
+</head>
+<body>
+  <main class="editor-shell">
+    <header class="editor-header">
+      <div>
+        <p class="eyebrow">SONVU CNC PLUGINS</p>
+        <h1>Thông số ngăn kéo</h1>
+        <p class="subtitle">Nhập kích thước theo milimét. Cửa sổ này không thay đổi hình học.</p>
+      </div>
+      <span class="unit-badge">Đơn vị: mm</span>
+    </header>
+
+    <section class="system-card" aria-label="Thông tin hệ ngăn kéo">
+      <div><span>Nguồn dữ liệu</span><strong id="source-label">Chưa xác định</strong></div>
+      <div><span>Vai trò đang chọn</span><strong id="selected-role-label">Vai trò ngăn kéo</strong></div>
+      <div class="wide"><span>Trạng thái hệ ngăn kéo</span><strong id="role-summary">Hệ hiện có: Chưa có thành phần</strong></div>
+    </section>
+
+    <div id="error-panel" class="notice error" role="alert" hidden></div>
+    <div id="warning-panel" class="notice warning" role="status" hidden></div>
+
+    <section class="form-card" data-section="opening">
+      <div class="section-heading">
+        <div>
+          <p class="step-label">NHÓM THÔNG SỐ 01</p>
+          <h2>Khoang ngăn kéo</h2>
+        </div>
+        <label class="toggle"><input id="opening-enabled" type="checkbox"> <span>Sử dụng nhóm này</span></label>
+      </div>
+      <div class="field-grid three-columns">
+        <label>Chiều rộng khoang <span class="required">*</span><span class="input-unit"><input id="opening-width" type="text" inputmode="decimal"><b>mm</b></span></label>
+        <label>Chiều cao khoang <span class="required">*</span><span class="input-unit"><input id="opening-height" type="text" inputmode="decimal"><b>mm</b></span></label>
+        <label>Chiều sâu khoang <span class="required">*</span><span class="input-unit"><input id="opening-depth" type="text" inputmode="decimal"><b>mm</b></span></label>
+      </div>
+    </section>
+
+    <section class="form-card" data-section="slides">
+      <div class="section-heading">
+        <div>
+          <p class="step-label">NHÓM THÔNG SỐ 02</p>
+          <h2>Thanh ray</h2>
+        </div>
+        <label class="toggle"><input id="slides-enabled" type="checkbox"> <span>Sử dụng nhóm này</span></label>
+      </div>
+      <div class="field-grid three-columns">
+        <label>Loại ray <span class="required">*</span><select id="slide-type"></select></label>
+        <label>Mẫu ray<select id="slide-preset"></select></label>
+        <label>Nhà sản xuất<input id="slide-manufacturer" type="text"></label>
+      </div>
+      <p id="slide-strategy-message" class="strategy-message" hidden>Chưa có công thức tính tự động cho loại ray này.</p>
+      <div class="field-grid four-columns compact-grid">
+        <label>Khoảng hở bên trái <span class="required">*</span><span class="input-unit"><input id="left-clearance" type="text" inputmode="decimal"><b>mm</b></span></label>
+        <label>Khoảng hở bên phải <span class="required">*</span><span class="input-unit"><input id="right-clearance" type="text" inputmode="decimal"><b>mm</b></span></label>
+        <label>Khoảng hở phía trên <span class="required">*</span><span class="input-unit"><input id="top-clearance" type="text" inputmode="decimal"><b>mm</b></span></label>
+        <label>Khoảng hở phía dưới <span class="required">*</span><span class="input-unit"><input id="bottom-clearance" type="text" inputmode="decimal"><b>mm</b></span></label>
+        <label>Độ lùi phía trước <span class="required">*</span><span class="input-unit"><input id="front-setback" type="text" inputmode="decimal"><b>mm</b></span></label>
+        <label>Khoảng hở phía sau <span class="required">*</span><span class="input-unit"><input id="rear-clearance" type="text" inputmode="decimal"><b>mm</b></span></label>
+        <label>Độ dày ray <span class="required">*</span><span class="input-unit"><input id="slide-thickness" type="text" inputmode="decimal"><b>mm</b></span></label>
+        <label>Chiều cao ray<span class="input-unit"><input id="slide-height" type="text" inputmode="decimal"><b>mm</b></span></label>
+        <label>Chiều dài ray<span class="input-unit"><input id="slide-length" type="text" inputmode="decimal"><b>mm</b></span></label>
+        <label>Chiều sâu ngăn kéo tối thiểu<span class="input-unit"><input id="minimum-drawer-depth" type="text" inputmode="decimal"><b>mm</b></span></label>
+        <label>Chiều sâu ngăn kéo tối đa<span class="input-unit"><input id="maximum-drawer-depth" type="text" inputmode="decimal"><b>mm</b></span></label>
+      </div>
+    </section>
+
+    <section class="form-card" data-section="box">
+      <div class="section-heading">
+        <div>
+          <p class="step-label">NHÓM THÔNG SỐ 03</p>
+          <h2>Thùng ngăn kéo</h2>
+        </div>
+        <label class="toggle"><input id="box-enabled" type="checkbox"> <span>Sử dụng nhóm này</span></label>
+      </div>
+      <div class="mode-row">
+        <label>Chế độ kích thước
+          <select id="dimension-mode">
+            <option value="calculated">Tự động tính theo khoang và ray</option>
+            <option value="manual">Nhập kích thước thủ công</option>
+          </select>
+        </label>
+        <span id="dimension-indicator" class="mode-badge">Tự động tính</span>
+      </div>
+      <div class="field-grid three-columns box-dimensions">
+        <label>Chiều rộng thùng <span class="required">*</span><span class="input-unit"><input id="box-width" type="text" inputmode="decimal"><b>mm</b></span></label>
+        <label>Chiều cao thùng <span class="required">*</span><span class="input-unit"><input id="box-height" type="text" inputmode="decimal"><b>mm</b></span></label>
+        <label>Chiều sâu thùng <span class="required">*</span><span class="input-unit"><input id="box-depth" type="text" inputmode="decimal"><b>mm</b></span></label>
+      </div>
+      <div class="field-grid four-columns compact-grid">
+        <label>Độ dày ván <span class="required">*</span><span class="input-unit"><input id="board-thickness" type="text" inputmode="decimal"><b>mm</b></span></label>
+        <label>Độ dày đáy <span class="required">*</span><span class="input-unit"><input id="bottom-thickness" type="text" inputmode="decimal"><b>mm</b></span></label>
+        <label>Độ dày mặt trước <span class="required">*</span><span class="input-unit"><input id="front-thickness" type="text" inputmode="decimal"><b>mm</b></span></label>
+        <label>Độ dày mặt sau <span class="required">*</span><span class="input-unit"><input id="back-thickness" type="text" inputmode="decimal"><b>mm</b></span></label>
+      </div>
+      <button id="preview-button" class="button secondary preview-button" type="button">Tính lại kích thước thùng</button>
+      <div id="preview-panel" class="preview-panel" role="status" hidden>
+        <strong>Kích thước thùng dự kiến:</strong>
+        <span>Rộng: <b id="preview-width">—</b> mm</span>
+        <span>Cao: <b id="preview-height">—</b> mm</span>
+        <span>Sâu: <b id="preview-depth">—</b> mm</span>
+      </div>
+    </section>
+
+    <footer class="action-bar">
+      <button id="reset-button" class="button ghost" type="button">Khôi phục giá trị ban đầu</button>
+      <div>
+        <button id="cancel-button" class="button secondary" type="button">Hủy</button>
+        <button id="save-button" class="button primary" type="button">Lưu thông số</button>
+      </div>
+    </footer>
+  </main>
+  <script src="specification_editor.js"></script>
+</body>
+</html>

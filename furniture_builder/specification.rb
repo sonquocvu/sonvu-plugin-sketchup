@@ -3,6 +3,9 @@
 # Pure furniture layout calculations. Keeping this file independent from the
 # SketchUp API makes the cabinet rules deterministic and easy to regression-test.
 
+require_relative 'drawer_builder/slide_configurations'
+require_relative 'drawer_builder/calculator'
+
 module SonVu
   module CNCPlugins
     module FurnitureBuilder
@@ -204,9 +207,10 @@ module SonVu
           return [] unless settings[:include_drawer_boxes]
 
           drawer_fronts = front_parts(settings).select { |front| front.role == 'drawer_front' }
-          outer_width = drawer_outer_width(settings)
-          depth = resolved_drawer_depth(settings)
-          height = settings[:drawer_box_height_mm]
+          dimensions = drawer_dimensions(settings)
+          outer_width = dimensions[:box_width]
+          depth = dimensions[:box_depth]
+          height = dimensions[:box_height]
           x = settings[:panel_thickness_mm] + settings[:drawer_side_clearance_mm]
           y = settings[:drawer_front_setback_mm]
 
@@ -660,16 +664,33 @@ module SonVu
             return 'Khoảng lùi trước và khoảng hở sau của hộp ngăn kéo không được âm.'
           end
 
-          width = drawer_outer_width(settings)
+          begin
+            dimensions = drawer_dimensions(settings)
+          rescue DrawerBuilder::Calculator::CalculationError => e
+            return 'Chiều rộng trong tủ không đủ cho độ hở ray và hai thành ngăn kéo.' if e.code == :invalid_box_width
+            return 'Chiều sâu trong tủ không đủ cho khoảng lùi và khoảng hở hộp ngăn kéo.' if e.code == :invalid_box_depth
+            return 'Chiều cao hộp ngăn kéo phải lớn hơn 0.' if e.code == :invalid_box_height
+
+            raise
+          end
+          width = dimensions[:box_width]
           panel = settings[:drawer_panel_thickness_mm]
           return 'Chiều rộng trong tủ không đủ cho độ hở ray và hai thành ngăn kéo.' unless width > (2 * panel)
 
-          maximum_depth = maximum_drawer_depth(settings)
+          begin
+            maximum_depth = maximum_drawer_depth(settings)
+          rescue DrawerBuilder::Calculator::CalculationError => e
+            if e.code == :invalid_box_depth
+              return 'Chiều sâu trong tủ không đủ cho khoảng lùi và khoảng hở hộp ngăn kéo.'
+            end
+
+            raise
+          end
           return 'Chiều sâu trong tủ không đủ cho khoảng lùi và khoảng hở hộp ngăn kéo.' unless maximum_depth.positive?
           if settings[:drawer_box_depth_mm].positive? && settings[:drawer_box_depth_mm] > maximum_depth
             return 'Chiều sâu hộp ngăn kéo vượt quá chiều sâu sử dụng của tủ.'
           end
-          return 'Chiều sâu hộp ngăn kéo không đủ cho thành trước và thành sau.' unless resolved_drawer_depth(settings) > (2 * panel)
+          return 'Chiều sâu hộp ngăn kéo không đủ cho thành trước và thành sau.' unless dimensions[:box_depth] > (2 * panel)
           unless settings[:drawer_bottom_thickness_mm] < settings[:drawer_box_height_mm]
             return 'Độ dày đáy phải nhỏ hơn chiều cao hộp ngăn kéo.'
           end
@@ -774,18 +795,49 @@ module SonVu
         end
 
         def drawer_outer_width(settings)
-          settings[:width_mm] - (2 * settings[:panel_thickness_mm]) -
-            (2 * settings[:drawer_side_clearance_mm])
+          drawer_dimensions(settings)[:box_width]
         end
 
         def maximum_drawer_depth(settings)
-          cabinet_usable_depth(settings) - settings[:drawer_front_setback_mm] -
-            settings[:drawer_rear_clearance_mm]
+          drawer_dimensions(settings, requested_depth: 0.0)[:box_depth]
         end
 
         def resolved_drawer_depth(settings)
-          requested = settings[:drawer_box_depth_mm]
-          requested.positive? ? requested : maximum_drawer_depth(settings)
+          drawer_dimensions(settings)[:box_depth]
+        end
+
+        def drawer_dimensions(settings, requested_depth: nil)
+          requested = requested_depth.nil? ? settings[:drawer_box_depth_mm] : requested_depth
+          front_setback = settings[:drawer_front_setback_mm]
+          rear_clearance = settings[:drawer_rear_clearance_mm]
+          effective_opening_depth = if requested.to_f.positive?
+                                      requested.to_f + front_setback + rear_clearance
+                                    else
+                                      cabinet_usable_depth(settings)
+                                    end
+          slides = DrawerBuilder::SlideConfigurations.resolve(
+            type: 'side_mount_ball_bearing',
+            preset_name: DrawerBuilder::SlideConfigurations::LEGACY_PRESET_KEY,
+            overrides: {
+              left_clearance: settings[:drawer_side_clearance_mm],
+              right_clearance: settings[:drawer_side_clearance_mm],
+              top_clearance: 0.0,
+              bottom_clearance: 0.0,
+              front_setback: front_setback,
+              rear_clearance: rear_clearance,
+              slide_thickness: settings[:drawer_slide_thickness_mm],
+              slide_height: settings[:drawer_slide_height_mm],
+              slide_length: settings[:drawer_slide_length_mm]
+            }
+          )
+          DrawerBuilder::Calculator.calculate(
+            opening: {
+              opening_width: settings[:width_mm] - (2 * settings[:panel_thickness_mm]),
+              opening_height: settings[:drawer_box_height_mm],
+              opening_depth: effective_opening_depth
+            },
+            slides: slides
+          )
         end
 
         def carcass_parts(settings)

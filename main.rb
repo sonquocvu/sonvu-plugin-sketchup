@@ -22,6 +22,24 @@ require_relative 'dogbone_joinery/dialog_html'
 require_relative 'dogbone_joinery/dialog'
 require_relative 'dogbone_joinery/geometry'
 require_relative 'dogbone_joinery/tool'
+require_relative 'furniture_builder/drawer_builder/slide_configurations'
+require_relative 'furniture_builder/drawer_builder/specification'
+require_relative 'furniture_builder/drawer_builder/calculator'
+require_relative 'furniture_builder/drawer_builder/identity'
+require_relative 'furniture_builder/drawer_builder/metadata'
+require_relative 'furniture_builder/drawer_builder/persistence'
+require_relative 'furniture_builder/drawer_builder/legacy_adapter'
+require_relative 'furniture_builder/drawer_builder/selection_validator'
+require_relative 'furniture_builder/drawer_builder/system_registry'
+require_relative 'furniture_builder/drawer_builder/role_assignment'
+require_relative 'furniture_builder/drawer_builder/specification_owner'
+require_relative 'furniture_builder/drawer_builder/specification_editor_presenter'
+require_relative 'furniture_builder/drawer_builder/specification_editor_parser'
+require_relative 'furniture_builder/drawer_builder/specification_editor'
+require_relative 'furniture_builder/drawer_builder/command_messages'
+require_relative 'furniture_builder/drawer_builder/system_picker'
+require_relative 'furniture_builder/drawer_builder/toolbar'
+require_relative 'furniture_builder/drawer_builder/commands'
 require_relative 'furniture_builder/presets'
 require_relative 'furniture_builder/specification'
 require_relative 'furniture_builder/dialog_html'
@@ -59,6 +77,7 @@ module SonVu
       Licensing::Commands.register_menu(root_menu)
       FurnitureBuilder::Commands.register_menu(root_menu)
       DogboneJoinery::Commands.register_menu(root_menu)
+      FurnitureBuilder::DrawerBuilder::Commands.register_menu(root_menu)
     end
 
     def self.extension_menu
