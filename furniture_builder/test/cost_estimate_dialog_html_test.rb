@@ -15,6 +15,7 @@ module SonVu
 
           assert_includes html, '<html lang="vi">'
           assert_includes html, 'Dự toán chi phí'
+          assert_includes html, 'SonVu Furniture Builder — Bước 3'
           assert_includes html, 'Tỷ lệ hao hụt vật liệu'
           assert_includes html, 'Đơn giá dán cạnh'
           assert_includes html, 'Dự toán chi phí'
@@ -24,6 +25,7 @@ module SonVu
           refute_includes html, 'MDF "A" & B'
           assert_match(/Xuất báo giá CSV<\/button>/, html)
           assert_match(/button type="button" disabled onclick="window\.sketchup\.exportCostEstimate/, html)
+          refute_match(/Phase|Giai đoạn/i, html)
         end
 
         def test_calculated_preview_shows_subtotals_and_per_cabinet_totals

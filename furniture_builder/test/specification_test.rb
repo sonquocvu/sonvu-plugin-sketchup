@@ -213,7 +213,23 @@ module SonVu
           assert_includes html, 'Tạo tay nắm'
           assert_includes html, 'Tạo mẫu bản lề chén'
           assert_includes html, 'Tạo ray cho hộp ngăn kéo'
+          assert_includes html, 'data-step-target="carcass"'
+          assert_includes html, 'data-step-target="fronts"'
+          assert_includes html, 'data-step-target="drawers"'
+          assert_includes html, 'data-step-target="hardware"'
+          assert_includes html, 'Quay lại'
+          assert_includes html, 'Tiếp theo'
+          assert_includes html, "const initialSection = \"carcass\";"
+          refute_match(/Phase|Giai đoạn/i, html)
           Presets.options.each { |_key, label| assert_includes html, label }
+        end
+
+        def test_html_dialog_can_open_directly_on_a_phase_two_tab
+          html = DialogHTML.html(Specification.defaults('tu_bep_duoi'), :edit, :fronts)
+
+          assert_includes html, "const initialSection = \"fronts\";"
+          assert_includes html, "const wizardSteps = ['carcass', 'fronts', 'drawers', 'hardware'];"
+          assert_includes html, 'showStep(initialSection)'
         end
 
         def test_html_json_escapes_script_breakout_characters

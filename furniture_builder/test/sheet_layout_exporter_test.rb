@@ -52,7 +52,7 @@ module SonVu
           html = SheetLayoutExporter.report_html(report, result)
 
           assert_includes html, '<html lang="vi">'
-          assert_includes html, 'SonVu Furniture Builder — Phase 4C'
+          assert_includes html, 'SonVu Furniture Builder — Bước 4'
           assert_includes html, '@page { size:A4 landscape'
           assert_includes html, 'In / Lưu PDF'
           assert_equal result[:sheet_count], html.scan('class="sheet-map"').length
@@ -63,6 +63,7 @@ module SonVu
           assert_includes html, 'Chi tiết chưa xếp được (1)'
           refute_includes html, '<script src='
           refute_includes html, '<link rel='
+          refute_match(/Phase|Giai đoạn/i, html)
         end
 
         def test_write_emits_both_files_without_stale_temporary_files

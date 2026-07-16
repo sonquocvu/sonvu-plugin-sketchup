@@ -8,6 +8,11 @@ developers. It describes the current implementation, not an aspirational API.
 The extension provides CNC woodworking template generators for SketchUp.
 Customer-facing commands are intentionally separate:
 
+- **Trung tâm nội thất** is the Vietnamese read-only workflow dashboard. It
+  reports current selection/model counts and license state, then routes to the
+  existing workflow commands. The `SonVu Nội thất` toolbar exposes Dashboard,
+  Create, Edit, Cut List, Cost Estimate, Sheet Optimization, and CNC Preview as
+  distinct icon commands.
 - **Tạo tủ nội thất** creates a Vietnamese preset-based furniture carcass with
   optional Phase 2A doors/fronts, Phase 2B five-panel drawer boxes, and Phase
   2C hardware templates, then starts a click-to-place tool.
@@ -22,6 +27,10 @@ Customer-facing commands are intentionally separate:
 - **Tối ưu cắt ván** opens the Phase 4A read-only rectangular sheet optimizer
   and Phase 4B interactive SVG sheet maps for the same report scope. Phase 4C
   exports a printable HTML report and placement CSV on explicit user request.
+- **Xem trước gia công CNC** opens the Phase 5A–5C read-only per-panel machining
+  plan. It reconstructs hinge pockets, applies saved connector/shelf-pin/groove
+  rules, validates both faces, flags manufacturer-pattern references, and can
+  explicitly export a neutral per-face DXF/CSV package.
 - **Tạo mộng âm** creates a recessed dog-bone mortise template on one selected
   model face.
 - **Tạo mộng dương** creates one or more outward tenons and unions them into the
@@ -47,10 +56,13 @@ sonvu_cnc_plugins/
     ui_helpers.rb                    message boxes
     licensing/                       signed-token licensing client and UI
   furniture_builder/
+    dashboard_state.rb                pure dashboard summary/action enablement
+    dashboard_html.rb                 Vietnamese Phase 1–5 workflow cards
+    dashboard.rb                      read-only HtmlDialog controller and routing
     presets.rb                       Vietnamese cabinet, front, drawer, hardware presets
     specification.rb                 pure millimetre validation and part/hardware layout
     dialog.rb                         HtmlDialog/native inputbox controller
-    dialog_html.rb                    Vietnamese furniture form
+    dialog_html.rb                    Vietnamese Phase 1/2 tabbed furniture wizard
     geometry.rb                       tagged cabinet, panel, and hardware creation
     cut_list.rb                       read-only Phase 3A collection and aggregation
     cut_list_csv_exporter.rb          Phase 3B UTF-8 board/hardware CSV writer
@@ -65,8 +77,22 @@ sonvu_cnc_plugins/
     cost_estimate_csv_exporter.rb     Phase 3C quotation CSV writer
     cut_list_dialog_html.rb           Vietnamese board/hardware report markup
     cut_list_dialog.rb                HtmlDialog and native fallback controller
+    machining_rules.rb                pure Phase 5B presets and validation
+    machining_planner.rb              pure Phase 5A–5B panel/operation planning
+    machining_exporter.rb             safe Phase 5C per-face DXF and CSV package
+    machining_preview_html.rb         Vietnamese Step 5 panel maps and validation UI
+    machining_preview_dialog.rb       selected/model cabinet collection and dialog
     tool.rb                           click-to-place cabinet envelope preview
     commands.rb                       reload-safe furniture menu commands
+    icons/                             dashboard toolbar SVGs
+    test/commands_toolbar_test.rb      toolbar order, tooltip, and icon checks
+    test/dashboard_state_test.rb       dashboard state/action regression suite
+    test/dashboard_html_test.rb        dashboard markup/callback regression suite
+    test/machining_planner_test.rb      Phase 5A–5B coordinate/validation suite
+    test/machining_rules_test.rb        Phase 5B presets and input validation
+    test/machining_exporter_test.rb     Phase 5C DXF/CSV and overwrite safety suite
+    test/machining_preview_html_test.rb Step 5 SVG/escaping/UI regression suite
+    test/machining_preview_dialog_test.rb selection/model scope regression suite
     test/specification_test.rb        SketchUp-free layout regression suite
     test/cut_list_test.rb              SketchUp-free Phase 3A report regression suite
     test/cut_list_csv_exporter_test.rb SketchUp-free Phase 3B export regression suite
@@ -343,6 +369,14 @@ Run from the SketchUp Plugins directory:
 
 ```powershell
 ruby sonvu_cnc_plugins\dogbone_joinery\test\geometry_test.rb
+ruby sonvu_cnc_plugins\furniture_builder\test\commands_toolbar_test.rb
+ruby sonvu_cnc_plugins\furniture_builder\test\dashboard_state_test.rb
+ruby sonvu_cnc_plugins\furniture_builder\test\dashboard_html_test.rb
+ruby sonvu_cnc_plugins\furniture_builder\test\machining_planner_test.rb
+ruby sonvu_cnc_plugins\furniture_builder\test\machining_rules_test.rb
+ruby sonvu_cnc_plugins\furniture_builder\test\machining_exporter_test.rb
+ruby sonvu_cnc_plugins\furniture_builder\test\machining_preview_html_test.rb
+ruby sonvu_cnc_plugins\furniture_builder\test\machining_preview_dialog_test.rb
 ruby sonvu_cnc_plugins\furniture_builder\test\specification_test.rb
 ruby sonvu_cnc_plugins\furniture_builder\test\cut_list_test.rb
 ruby sonvu_cnc_plugins\furniture_builder\test\cut_list_csv_exporter_test.rb
@@ -367,7 +401,9 @@ Get-Content "$env:TEMP\sonvu_furniture_builder_runtime_smoke.json"
 ```
 
 The harness checks carcass/front/drawer-box/hardware component solids, linked
-owner metadata, Phase 3A read-only counts, Phase 3B in-memory CSV contracts,
+owner metadata, unified dashboard counts/actions, Phase 5A–5B rule operations,
+read-only preview, Phase 5C in-memory DXF/CSV documents, Phase 3A read-only counts,
+Phase 3B in-memory CSV contracts,
 Phase 3C project/cabinet totals and quotation CSV, Phase 4A read-only sheet
 packing, Phase 4B SVG maps, Phase 4C in-memory export documents, safe rebuild, preserved
 transformation, preserved unrelated entities, and Undo, then closes the blank
@@ -376,6 +412,10 @@ model without saving. It must not be run against a customer model.
 Tests should cover these invariants:
 
 - no duplicate face points;
+- dashboard counts/actions reflect the report, selection, and license without
+  writing to the model;
+- furniture wizard tabs expose Phase 1, 2A, 2B, and 2C and support direct
+  opening on a requested section;
 - mortise vertices never rise above surface Z;
 - tenon reliefs lie in XZ and extrusion lies along Y;
 - clearance is applied exactly once;
@@ -420,10 +460,18 @@ placement changes.
 
 ## 10. Manual SketchUp smoke test
 
-1. Restart SketchUp to clear old command registrations.
-2. Open `Thiết kế nội thất > Tạo tủ nội thất`, exercise all four Vietnamese
+1. Restart SketchUp to clear old command registrations. Confirm the `SonVu Nội
+   thất` toolbar and its cabinet icon appear.
+2. Open `Thiết kế nội thất > Trung tâm nội thất`. Confirm its counts refresh
+   after changing selection, unavailable actions are disabled, license state is
+   visible, and Bước 5 opens `Xem trước gia công CNC` when boards are available.
+3. From the dashboard, create a cabinet and confirm the wizard has four tabs:
+   Bước 1 for the carcass, then three Bước 2 sections for fronts, drawers, and
+   hardware. No customer-facing screen should display `Phase` or `Giai đoạn`.
+   Confirm Back/Next navigation and the direct edit buttons open the intended tab.
+4. Open `Thiết kế nội thất > Tạo tủ nội thất`, exercise all four Vietnamese
    presets, and place each cabinet at a clicked point.
-3. In Entity Info and Outliner, confirm the cabinet is one group and its panels
+5. In Entity Info and Outliner, confirm the cabinet is one group and its panels
    are individually named components. Check rear panel, shelves divided by
    vertical partitions, plinth position, material, and grain/edge attributes.
    Exercise every Vietnamese front layout; confirm overlay/inset gaps, separate
@@ -434,42 +482,49 @@ placement changes.
    material and the same `drawer_index` on the front and its five box panels.
    Enable the Phase 2C options and confirm one handle per front, circular hinge
    cup templates on hinged doors/flaps, and one left/right slide pair per drawer.
-   Confirm hardware uses its own material and carries `owner_part_key`.
-4. Select one or more cabinets and run `Danh sách chi tiết`. Confirm only the
+   Confirm hardware uses its own material and carries `owner_part_key`. Open
+   Bước 5, verify hinge cups appear on Mặt B with valid X/Y/diameter/depth, and
+   confirm refreshing or closing the preview does not change model entities.
+   Click `Xuất gói CNC`, confirm one DXF per displayed panel face plus
+   `nguyen_cong.csv`, inspect the millimetre coordinates in a DXF viewer, and
+   verify a plan with red `Cần kiểm tra` operations cannot be exported. Export
+   again to confirm replacement, then choose an existing unrelated `_cnc`
+   folder and confirm the plugin refuses to replace it.
+6. Select one or more cabinets and run `Danh sách chi tiết`. Confirm only the
    selected cabinets are counted, board and hardware tables are separate, and
    identical parts have the expected quantity. Clear the selection and rerun to
    confirm all SonVu cabinets in the model are counted.
-5. Click `Xuất CSV`, choose `cong_trinh.csv`, and confirm the output names are
+7. Click `Xuất CSV`, choose `cong_trinh.csv`, and confirm the output names are
    `cong_trinh_chi_tiet_van.csv` and `cong_trinh_phu_kien.csv`. Open both in
    Excel, verify Vietnamese text and columns, then export again and verify the
    overwrite confirmation appears.
-6. Click `Dự toán chi phí`, enter material prices per m², waste percentage,
+8. Click `Dự toán chi phí`, enter material prices per m², waste percentage,
    edge price per metre, and hardware unit prices. Calculate and verify the
    material/edge/hardware subtotals, each cabinet total, and project total.
    Reopen the dialog to confirm prices persist, then export and open the
    quotation CSV in Excel.
-7. Click `Tối ưu cắt ván`, calculate a layout, and confirm each material and
+9. Click `Tối ưu cắt ván`, calculate a layout, and confirm each material and
    thickness has separate sheet tabs. Verify colored parts, trim boundary,
    grain arrows, hover details, zoom controls, and the collapsible coordinate
    table. Change the stock size to force multiple sheets and confirm navigation.
    Click `Xuất phương án`, confirm both `_phuong_an_cat.html` and
    `_toa_do_cat.csv` are created, print the HTML to PDF, open the CSV in Excel,
    then export again and verify overwrite confirmation.
-8. Move and rotate a generated cabinet, select it, run `Chỉnh sửa tủ đã chọn`,
+10. Move and rotate a generated cabinet, select it, run `Chỉnh sửa tủ đã chọn`,
    change dimensions, and confirm the transform is preserved. Add an unrelated
    entity inside the cabinet group before editing and confirm it is preserved.
-9. Undo once and confirm the whole creation or edit operation is reverted.
-10. Create a rectangular board and select exactly one face.
-11. Create a mortise and confirm edge offsets, flush surface, inward depth, and
+11. Undo once and confirm the whole creation or edit operation is reverted.
+12. Create a rectangular board and select exactly one face.
+13. Create a mortise and confirm edge offsets, flush surface, inward depth, and
    excessive-depth rejection.
-12. Open a solid group/component for editing, select an edge face, and create
+14. Open a solid group/component for editing, select an edge face, and create
    tenons. Confirm outward projection, requested shoulder radius,
    single-tenon centring, equal multi-tenon gaps/margins, and a single manifold
    union result.
-13. Confirm a hidden backup exists and the union result keeps the original part
+15. Confirm a hidden backup exists and the union result keeps the original part
    name where possible.
-14. Undo once and confirm the complete union operation is removed.
-15. Run cleanup and confirm the CNC board result is not deleted.
+16. Undo once and confirm the complete union operation is removed.
+17. Run cleanup and confirm the CNC board result is not deleted.
 
 ## 11. Customer RBZ packaging
 
@@ -514,9 +569,12 @@ Then:
 ## 13. Known limitations and refactoring candidates
 
 - Furniture Builder Phase 2C creates simplified handle, hinge-cup, and drawer-
-  slide templates. It does not drill/cut panels or model detailed manufacturer
-  hardware. Door profiles, room/wall placement, costing, and CNC export remain
-  later phases.
+  slide templates. Phase 5A converts hinge cups to validated preview operations
+  but does not drill/cut panels. Handle and slide drilling requires future
+  manufacturer templates. Door profiles and room/wall placement remain later work.
+- Phase 5C exports controller-neutral per-face DXF and an operation manifest.
+  It does not select tools, calculate feeds/speeds, mirror for machine setup,
+  emit G-code, or provide controller-specific postprocessors.
 - Phase 4C exports layout reports and coordinates only. It does not calculate
   saw-cut sequences, reuse offcuts, optimize across different stock sizes, or
   emit CNC toolpaths. Those outputs remain later phases.
@@ -772,3 +830,115 @@ that look like spreadsheet formulas use the Phase 3B apostrophe protection.
 
 The pair is a production handoff, not CNC machine code. Saw sequencing, offcut
 inventory, DXF, G-code, and router toolpaths remain outside Phase 4C.
+
+## 21. Furniture Builder unified UI contract
+
+`DashboardState` is pure Ruby. It converts the current Phase 3A report, exact
+editable selection, license view, and plugin version into display metrics and
+action enablement. `Dashboard` performs the SketchUp inspection and renders
+`DashboardHTML`; opening or refreshing it must not start a model operation or
+change entities. Every callback delegates to an existing licensed command, so
+the command remains the final authorization and validation boundary even when
+the displayed dashboard state is stale.
+
+The dashboard is available from the first item of the `Thiết kế nội thất`
+submenu. The `SonVu Nội thất` toolbar presents Dashboard, Create, Edit, Cut
+List, Cost Estimate, Sheet Optimization, and CNC Preview in workflow order, with separators
+between navigation, modeling, and production commands. Every command has its
+own SVG icon and Vietnamese tooltip. Registration must be reload-safe. The
+dashboard remains visible without a valid license so the user can see status
+and open license management; all production actions are then disabled. Step 5
+is enabled only when the licensed report contains board parts.
+
+The create/edit `DialogHTML` contains four client-side sections: `carcass`,
+`fronts`, `drawers`, and `hardware`. All fields remain in one form and one
+submission payload, preserving the existing specification and geometry
+contracts. `initial_section` only controls the initially visible tab. Unknown
+values normalize to `carcass`. Phase 1–4 report, costing, optimization, and
+export dialogs remain separate focused dialogs and the legacy menu commands
+remain available.
+
+## 22. Furniture Builder Phase 5A machining-preview contract
+
+`MachiningPlanner` is pure Ruby and machine-independent. It rebuilds the saved
+`Specification.parts` for each selected cabinet, or every cabinet when none is
+selected. Every non-hardware part receives finished dimensions, cabinet-local
+source origin, and explicit length/width/thickness axes. Front panels use
+length=Z, width=X, thickness=Y. CNC preview coordinates use X along finished
+length and Y along finished width, measured from the lower-left production
+origin without postprocessor mirroring.
+
+Only `hinge_cup` is a supported machining operation in Phase 5A. Its circular
+pocket is assigned to Face B (the rear/max-Y face of a front), with center X/Y,
+diameter, and depth in millimetres. Validation rejects non-positive diameter or
+depth, depth beyond panel thickness, and any circle crossing a panel boundary.
+Handles and drawer slides remain placement references and produce Vietnamese
+warnings because their manufacturer-specific hole spacing is unknown.
+
+`MachiningPreviewHTML` renders only panels containing operations as self-
+contained SVG maps and an auditable coordinate table. Model text is escaped.
+Planning, opening, and refreshing the preview are read-only: they must never
+start a SketchUp operation, alter entities, write files, or contact a network
+service. DXF, G-code, tool selection, feeds/speeds, drilling cycles, and
+controller-specific coordinate transforms remain outside Phase 5A.
+
+## 23. Furniture Builder Phase 5B machining-rule contract
+
+`MachiningRules` provides Vietnamese production presets plus normalized custom
+millimetre settings. The standard 18 mm preset enables dowel holes, cam
+pockets, 32 mm shelf-pin rows, and back grooves. A dowel-only preset disables
+cam pockets; a hinge-only preset preserves the Phase 5A view. Valid settings
+are saved to SketchUp preferences only after a successful recalculation.
+
+Rule-derived face operations use the same panel coordinate frames as Phase 5A:
+
+- dowel holes are placed on the inner faces of left/right sides at top and
+  bottom joint centers, using configurable front/rear offsets;
+- cam pockets are placed on the inner faces of top/bottom panels near both side
+  edges and at matching front/rear offsets;
+- shelf-pin rows use configurable diameter, depth, pitch, margins, and
+  front/rear offsets. Side panels receive their inner face; dividers receive
+  both Face A and Face B;
+- back grooves run along the finished length of both sides, top, and bottom,
+  with configurable width, depth, and rear offset.
+
+Circular and rectangular operations must remain inside finished panel bounds
+and cannot exceed panel thickness. Circular operations from opposite faces are
+also compared: if their projected circles overlap and combined depths exceed
+the panel thickness, both operations are invalid and a Vietnamese warning is
+shown. This is especially important for aligned shelf-pin rows on thin
+dividers.
+
+The Step 5 dialog renders a separate map/table for every machined panel face,
+shows per-operation-type totals, and accepts rule recalculation through one
+JSON callback. It remains read-only with respect to the SketchUp model. Edge
+boring, mating-hole generation, manufacturer hardware catalogs, DXF, G-code,
+feeds/speeds, and controller postprocessors remain outside Phase 5B.
+
+## 24. Furniture Builder Phase 5C neutral-export contract
+
+`MachiningExporter` accepts only a non-empty project whose operations are all
+`ready`. If even one operation is invalid, the entire package is rejected so a
+partial job cannot silently reach production. It is a pure document builder
+until the user explicitly clicks `Xuất gói CNC`; neither document generation
+nor file writing starts a SketchUp operation or mutates model entities.
+
+The selected base path produces one plugin-owned `<base>_cnc` directory. Each
+machined panel face receives a deterministic, ASCII-safe, indexed `.dxf` file.
+DXF files declare `$INSUNITS=4`, use the preview's lower-left X/Y millimetre
+frame without mirroring, include a closed `PANEL_OUTLINE` polyline, and encode
+circles or rectangular grooves on operation layers containing type, diameter
+or width, and depth. The package also contains `nguyen_cong.csv` with a UTF-8
+BOM, quoted fields, CRLF rows, and one row per ready operation. Formula-like
+model text receives the same apostrophe protection as other CSV exports.
+
+A private marker identifies directories created by this exporter. Replacement
+requires an explicit confirmation and is allowed only when that exact marker
+is present. The replacement is staged in a unique sibling directory and the
+previous owned directory is backed up until the staged package is moved into
+place. Unmarked directories and existing non-directory paths are never
+replaced.
+
+The package is intentionally controller-neutral. It contains no G-code,
+tool/feed/speed choices, drilling cycles, work-offset selection, setup
+mirroring, or postprocessor assumptions.

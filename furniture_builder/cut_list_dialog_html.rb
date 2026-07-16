@@ -55,7 +55,7 @@ module SonVu
               <body>
                 <main class="shell">
                   <header>
-                    <div><div class="brand">SonVu Furniture Builder — Phase 3A</div><h1>Danh sách chi tiết</h1><div class="scope">Phạm vi: #{h(report[:scope])}</div></div>
+                    <div><div class="brand">SonVu Furniture Builder — Bước 3</div><h1>Danh sách chi tiết</h1><div class="scope">Phạm vi: #{h(report[:scope])}</div></div>
                   </header>
                   <section class="summary">
                     #{summary_card(report[:cabinet_count], 'Số tủ')}
@@ -66,7 +66,7 @@ module SonVu
                   #{warning_html(report[:warnings])}
                   #{section_html('Chi tiết ván', report[:board_rows], false)}
                   #{section_html('Phụ kiện', report[:hardware_rows], true)}
-                  <div class="footer"><div class="note">Phase 4C xếp, hiển thị và xuất phương án cắt theo vật liệu, độ dày và chiều vân.</div><div class="actions"><button class="secondary" type="button" onclick="window.sketchup.closeCutList()">Đóng</button><button type="button" onclick="window.sketchup.exportCutList()">Xuất CSV</button><button type="button" onclick="window.sketchup.openCostEstimate()">Dự toán chi phí</button><button type="button" onclick="window.sketchup.openSheetOptimization()">Tối ưu cắt ván</button></div></div>
+                  <div class="footer"><div class="note">Bước 4 xếp, hiển thị và xuất phương án cắt theo vật liệu, độ dày và chiều vân.</div><div class="actions"><button class="secondary" type="button" onclick="window.sketchup.closeCutList()">Đóng</button><button type="button" onclick="window.sketchup.exportCutList()">Xuất CSV</button><button type="button" onclick="window.sketchup.openCostEstimate()">Dự toán chi phí</button><button type="button" onclick="window.sketchup.openSheetOptimization()">Tối ưu cắt ván</button></div></div>
                 </main>
               </body>
             </html>

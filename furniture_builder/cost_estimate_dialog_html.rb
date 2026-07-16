@@ -54,7 +54,7 @@ module SonVu
               </head>
               <body>
                 <main class="shell">
-                  <div class="brand">SonVu Furniture Builder — Phase 3C</div>
+                  <div class="brand">SonVu Furniture Builder — Bước 3</div>
                   <h1>Dự toán chi phí</h1>
                   <div class="scope">Phạm vi: #{h(report[:scope])} · #{report[:cabinet_count].to_i} tủ</div>
                   <form id="costForm">

@@ -9,14 +9,17 @@ module SonVu
   module CNCPlugins
     module FurnitureBuilder
       module DialogHTML
+        SECTION_KEYS = %w[carcass fronts drawers hardware].freeze
+
         module_function
 
-        def html(initial_values, mode)
+        def html(initial_values, mode, initial_section = :carcass)
           presets_json = safe_json(Presets::ITEMS)
           initial_json = safe_json(initial_values)
           edit_mode = mode == :edit
           action_label = edit_mode ? 'Cập nhật tủ' : 'Tạo và đặt tủ'
           title = edit_mode ? 'Chỉnh sửa tủ nội thất' : 'Tạo tủ nội thất'
+          initial_section_json = safe_json(normalized_section(initial_section))
 
           <<~HTML
             <!doctype html>
@@ -46,12 +49,18 @@ module SonVu
                     font-size: 14px;
                     line-height: 1.45;
                   }
-                  .shell { max-width: 660px; margin: 0 auto; padding: 18px; }
+                  .shell { max-width: 760px; margin: 0 auto; padding: 18px; }
                   header { margin-bottom: 14px; }
                   .brand { color: var(--accent); font-size: 12px; font-weight: 800; text-transform: uppercase; }
                   h1 { margin: 3px 0 0; font-size: 24px; }
                   h2 { margin: 0 0 12px; font-size: 15px; }
                   form { display: grid; gap: 12px; }
+                  .wizard-tabs { position:sticky; top:0; z-index:5; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; padding:8px; border:1px solid var(--line); border-radius:9px; background:rgba(243,245,242,.96); backdrop-filter:blur(4px); }
+                  .tab { min-height:42px; border:1px solid #c6d0c8; background:#fff; color:var(--text); padding:6px 8px; font-size:11px; }
+                  .tab.active { border-color:var(--accent); background:var(--accent-soft); color:var(--accent-dark); }
+                  .tab small { display:block; color:var(--muted); font-size:9px; }
+                  .wizard-step { display:grid; gap:12px; }
+                  .wizard-step[hidden] { display:none; }
                   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 9px; padding: 14px; }
                   .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
                   .field { display: grid; gap: 6px; }
@@ -71,12 +80,14 @@ module SonVu
                   .check input { width: 18px; height: 18px; accent-color: var(--accent); }
                   .note { margin-top: 10px; border-radius: 6px; background: var(--accent-soft); color: var(--accent-dark); padding: 9px 11px; font-size: 12px; }
                   .error { display: none; border: 1px solid rgba(179, 38, 30, .35); border-radius: 6px; background: #fff4f3; color: var(--danger); padding: 10px 12px; font-weight: 700; }
-                  .actions { display: flex; justify-content: flex-end; gap: 10px; }
+                  .actions { position:sticky; bottom:0; z-index:5; display:flex; justify-content:space-between; gap:10px; padding:10px; border:1px solid var(--line); border-radius:9px; background:rgba(243,245,242,.96); backdrop-filter:blur(4px); }
+                  .navigation,.submission { display:flex; gap:8px; }
                   button { min-height: 38px; border-radius: 6px; padding: 8px 15px; font-weight: 750; cursor: pointer; }
                   .secondary { border: 1px solid #c6d0c8; background: #fff; color: var(--text); }
                   .primary { border: 1px solid var(--accent); background: var(--accent); color: #fff; }
                   .primary:hover { background: var(--accent-dark); }
-                  @media (max-width: 470px) { .grid { grid-template-columns: 1fr; } .shell { padding: 12px; } }
+                  button:disabled { opacity:.45; cursor:not-allowed; }
+                  @media (max-width: 560px) { .grid { grid-template-columns:1fr; } .shell { padding:12px; } .wizard-tabs { grid-template-columns:repeat(2,1fr); } .actions { align-items:stretch; flex-direction:column; } .navigation,.submission { justify-content:flex-end; } }
                 </style>
               </head>
               <body>
@@ -86,6 +97,13 @@ module SonVu
                     <h1>#{title}</h1>
                   </header>
                   <form id="furnitureForm">
+                    <nav class="wizard-tabs" aria-label="Các bước cấu hình tủ">
+                      <button class="tab" type="button" data-step-target="carcass">Bước 1<small>Thùng tủ</small></button>
+                      <button class="tab" type="button" data-step-target="fronts">Bước 2<small>Mặt cánh</small></button>
+                      <button class="tab" type="button" data-step-target="drawers">Bước 2<small>Ngăn kéo</small></button>
+                      <button class="tab" type="button" data-step-target="hardware">Bước 2<small>Phụ kiện</small></button>
+                    </nav>
+                    <div class="wizard-step" data-step="carcass">
                     <section class="panel">
                       <h2>Loại tủ và tên gọi</h2>
                       <div class="grid">
@@ -142,6 +160,8 @@ module SonVu
                       </div>
                     </section>
 
+                    </div>
+                    <div class="wizard-step" data-step="fronts" hidden>
                     <section class="panel">
                       <h2>Mặt cánh và mặt ngăn kéo</h2>
                       <div class="grid">
@@ -174,9 +194,11 @@ module SonVu
                           <label class="check"><input id="front_edge_band_all" type="checkbox"> Đánh dấu dán cạnh bốn phía cho mặt cánh</label>
                         </div>
                       </div>
-                      <div class="note">Giai đoạn 2A tạo mặt cánh và mặt ngăn kéo. Hộp ngăn kéo và phụ kiện được cấu hình ở các phần tiếp theo.</div>
+                      <div class="note">Bước này tạo mặt cánh và mặt ngăn kéo. Hộp ngăn kéo và phụ kiện được cấu hình ở các bước tiếp theo.</div>
                     </section>
 
+                    </div>
+                    <div class="wizard-step" data-step="drawers" hidden>
                     <section class="panel">
                       <h2>Hộp ngăn kéo</h2>
                       <div class="grid">
@@ -195,9 +217,11 @@ module SonVu
                           <input id="drawer_material_name" type="text" maxlength="100">
                         </div>
                       </div>
-                      <div class="note">Độ hở ray được áp dụng riêng cho mỗi bên. Nhập sâu hộp bằng 0 để plugin tự dùng toàn bộ chiều sâu còn lại sau khoảng lùi trước và khoảng hở sau.</div>
+                      <div id="drawerContext" class="note">Độ hở ray được áp dụng riêng cho mỗi bên. Nhập sâu hộp bằng 0 để plugin tự dùng toàn bộ chiều sâu còn lại sau khoảng lùi trước và khoảng hở sau.</div>
                     </section>
 
+                    </div>
+                    <div class="wizard-step" data-step="hardware" hidden>
                     <section class="panel">
                       <h2>Phụ kiện cơ bản</h2>
                       <div class="grid">
@@ -230,19 +254,23 @@ module SonVu
                           <input id="hardware_material_name" type="text" maxlength="100">
                         </div>
                       </div>
-                      <div class="note">Các phụ kiện là component mẫu để bố trí và thống kê. Plugin chưa khoan hay cắt trực tiếp vào tấm ván. Số bản lề bằng 0 sẽ tự chọn theo chiều cao cánh; chiều dài ray bằng 0 sẽ theo chiều sâu hộp.</div>
+                      <div id="hardwareContext" class="note">Các phụ kiện là component mẫu để bố trí và thống kê. Plugin chưa khoan hay cắt trực tiếp vào tấm ván. Số bản lề bằng 0 sẽ tự chọn theo chiều cao cánh; chiều dài ray bằng 0 sẽ theo chiều sâu hộp.</div>
                     </section>
+                    </div>
 
                     <div id="error" class="error"></div>
                     <div class="actions">
-                      <button class="secondary" type="button" onclick="cancelDialog()">Hủy</button>
-                      <button class="primary" type="submit">#{action_label}</button>
+                      <div class="navigation"><button id="previousStep" class="secondary" type="button" onclick="moveStep(-1)">Quay lại</button><button id="nextStep" class="secondary" type="button" onclick="moveStep(1)">Tiếp theo</button></div>
+                      <div class="submission"><button class="secondary" type="button" onclick="cancelDialog()">Hủy</button><button class="primary" type="submit">#{action_label}</button></div>
                     </div>
                   </form>
                 </main>
                 <script>
                   const presets = #{presets_json};
                   const initial = #{initial_json};
+                  const initialSection = #{initial_section_json};
+                  const wizardSteps = ['carcass', 'fronts', 'drawers', 'hardware'];
+                  let currentStepIndex = Math.max(0, wizardSteps.indexOf(initialSection));
                   const presetSelect = document.getElementById('preset_key');
                   const valueFields = [
                     'cabinet_name', 'width_mm', 'height_mm', 'depth_mm', 'panel_thickness_mm',
@@ -322,6 +350,9 @@ module SonVu
                       'drawer_panel_thickness_mm', 'drawer_bottom_thickness_mm',
                       'drawer_front_setback_mm', 'drawer_rear_clearance_mm', 'drawer_material_name'
                     ].forEach((id) => { document.getElementById(id).disabled = disabled; });
+                    document.getElementById('drawerContext').textContent = hasDrawerFront ?
+                      'Có mặt ngăn kéo. Bật tạo hộp để nhập kích thước và độ hở ray.' :
+                      'Bố trí mặt trước hiện tại không có ngăn kéo. Hãy chọn bố trí có ngăn kéo ở bước Mặt cánh.';
                     updateHardwareState();
                   }
 
@@ -358,6 +389,31 @@ module SonVu
 
                     document.getElementById('hardware_material_name').disabled =
                       !handles.checked && !hinges.checked && !slides.checked;
+                    const enabledTypes = [hasFront ? 'tay nắm' : null, hasHingedFront ? 'bản lề' : null, hasDrawerBox ? 'ray ngăn kéo' : null].filter(Boolean);
+                    document.getElementById('hardwareContext').textContent = enabledTypes.length ?
+                      `Có thể cấu hình: ${enabledTypes.join(', ')}. Phụ kiện là component mẫu để bố trí và thống kê.` :
+                      'Chưa có mặt cánh hoặc hộp ngăn kéo phù hợp để tạo phụ kiện.';
+                  }
+
+                  function showStep(key) {
+                    const index = wizardSteps.indexOf(key);
+                    currentStepIndex = index >= 0 ? index : 0;
+                    document.querySelectorAll('.wizard-step').forEach((step) => {
+                      step.hidden = step.dataset.step !== wizardSteps[currentStepIndex];
+                    });
+                    document.querySelectorAll('.tab').forEach((tab) => {
+                      const active = tab.dataset.stepTarget === wizardSteps[currentStepIndex];
+                      tab.classList.toggle('active', active);
+                      tab.setAttribute('aria-selected', active ? 'true' : 'false');
+                    });
+                    document.getElementById('previousStep').disabled = currentStepIndex === 0;
+                    document.getElementById('nextStep').disabled = currentStepIndex === wizardSteps.length - 1;
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }
+
+                  function moveStep(direction) {
+                    const target = Math.max(0, Math.min(wizardSteps.length - 1, currentStepIndex + direction));
+                    showStep(wizardSteps[target]);
                   }
 
                   presetSelect.addEventListener('change', () => applyPreset(presetSelect.value));
@@ -367,8 +423,12 @@ module SonVu
                   document.getElementById('include_handles').addEventListener('change', updateHardwareState);
                   document.getElementById('include_hinges').addEventListener('change', updateHardwareState);
                   document.getElementById('include_drawer_slides').addEventListener('change', updateHardwareState);
+                  document.querySelectorAll('.tab').forEach((tab) => {
+                    tab.addEventListener('click', () => showStep(tab.dataset.stepTarget));
+                  });
                   presetSelect.value = initial.preset_key || '#{Presets::DEFAULT_KEY}';
                   applyValues(initial);
+                  showStep(initialSection);
 
                   document.getElementById('furnitureForm').addEventListener('submit', (event) => {
                     event.preventDefault();
@@ -415,6 +475,11 @@ module SonVu
 
         def safe_json(value)
           JSON.generate(value).gsub('<', '\\u003c').gsub('>', '\\u003e').gsub('&', '\\u0026')
+        end
+
+        def normalized_section(value)
+          key = value.to_s
+          SECTION_KEYS.include?(key) ? key : 'carcass'
         end
       end
     end

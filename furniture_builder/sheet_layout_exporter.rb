@@ -154,7 +154,7 @@ module SonVu
                 <button class="print-action" type="button" onclick="window.print()">In / Lưu PDF</button>
                 <main class="document">
                   <header>
-                    <div class="brand">SonVu Furniture Builder — Phase 4C</div>
+                    <div class="brand">SonVu Furniture Builder — Bước 4</div>
                     <h1>Phương án cắt ván</h1>
                     <div class="muted">Phạm vi: #{h(report[:scope])} · #{report[:cabinet_count].to_i} tủ</div>
                     #{report_summary_html(result)}

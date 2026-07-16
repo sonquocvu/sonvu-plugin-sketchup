@@ -22,10 +22,11 @@ module SonVu
           assert_includes html, 'calculateSheetOptimization'
           assert_includes html, 'exportSheetOptimization'
           assert_includes html, 'closeSheetOptimization'
-          assert_includes html, 'SonVu Furniture Builder — Phase 4C'
+          assert_includes html, 'SonVu Furniture Builder — Bước 4'
           assert_match(/button type="button" disabled onclick="window\.sketchup\.exportSheetOptimization/, html)
           refute_includes html, 'Số tấm</span>'
           refute_includes html, 'class="sheet-map"'
+          refute_match(/Phase|Giai đoạn/i, html)
         end
 
         def test_result_shows_sheet_coordinates_summary_and_escaped_names
@@ -37,7 +38,7 @@ module SonVu
           assert_includes html, 'Tấm 1'
           assert_includes html, 'X (mm)'
           assert_includes html, 'Xoay 90°'
-          assert_includes html, 'SonVu Furniture Builder — Phase 4C'
+          assert_includes html, 'SonVu Furniture Builder — Bước 4'
           assert_includes html, 'class="sheet-map"'
           assert_includes html, 'class="stock-sheet"'
           assert_includes html, 'class="usable-area"'

@@ -148,7 +148,9 @@ module SonVu
           assert_includes html, 'Dán cạnh'
           assert_includes html, '&lt;Tủ &amp; bếp&gt;'
           refute_includes html, '<Tủ & bếp>'
-          assert_includes html, 'Phase 4C'
+          assert_includes html, 'Bước 3'
+          assert_includes html, 'Bước 4'
+          refute_match(/Phase|Giai đoạn/i, html)
           assert_includes html, 'Xuất CSV'
           assert_includes html, 'exportCutList'
           assert_includes html, 'Dự toán chi phí'

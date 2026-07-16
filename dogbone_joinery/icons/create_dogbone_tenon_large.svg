@@ -1,8 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
-  <rect width="32" height="32" rx="4" fill="#f7f3ea"/>
-  <path d="M10 9h12v14H10z" fill="#43a763"/>
-  <path d="M13 5h6v4h-6zM13 23h6v4h-6z" fill="#2f7f4b"/>
-  <path d="M7 13h4v6H7zM21 13h4v6h-4z" fill="#8bd29d"/>
-  <path d="M12 10h8v12h-8z" fill="#65bd7a"/>
-  <path d="M16 7v18" stroke="#f7f3ea" stroke-width="1.8" stroke-linecap="round"/>
+  <defs>
+    <linearGradient id="wood" x1="4" y1="6" x2="18" y2="26" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffe19a"/>
+      <stop offset=".5" stop-color="#dda13f"/>
+      <stop offset="1" stop-color="#9b591a"/>
+    </linearGradient>
+    <linearGradient id="tenon" x1="15" y1="12" x2="29" y2="20" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#32906a"/>
+      <stop offset=".55" stop-color="#216a4e"/>
+      <stop offset="1" stop-color="#103527"/>
+    </linearGradient>
+  </defs>
+  <rect x="3.5" y="6" width="14" height="20" rx="2.8" fill="url(#wood)"/>
+  <path d="M15.5 11.5h13v9h-13z" fill="url(#tenon)"/>
+  <path d="M6.3 6h11.2v5.5h11v9h-11V26H6.3a2.8 2.8 0 0 1-2.8-2.8V8.8A2.8 2.8 0 0 1 6.3 6Z" fill="none" stroke="#15382a" stroke-width="1.6" stroke-linejoin="round"/>
+  <path d="M6.2 9.5c3-1 5.3.7 8.1-.3M6.2 22.5c3.4-1.1 5.4.8 8.5-.3" fill="none" stroke="#fff1c2" stroke-width="1" stroke-linecap="round" opacity=".6"/>
+  <path d="M17 13h10.1M17 19.5h10.1" stroke="#66b493" stroke-width="1" stroke-linecap="round" opacity=".8"/>
+  <path d="M16.8 11.8v8.4" stroke="#081d16" stroke-width="1.2"/>
 </svg>

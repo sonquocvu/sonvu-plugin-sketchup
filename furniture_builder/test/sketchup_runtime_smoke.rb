@@ -105,6 +105,57 @@ module SonVu
                   !panel.get_attribute(CNCPlugins::ATTRIBUTE_DICTIONARY, 'owner_part_key').to_s.empty?
               end
           end
+          assert('unified dashboard summarizes Phases 1–4 without changing the model') do
+            report = CutList.report_for_model(model)
+            entity_count = model.entities.length
+            state = DashboardState.build(
+              report: report,
+              editable_selection: true,
+              selected_cabinet_name: original[:cabinet_name],
+              license_view: { licensed: true, state: 'trial', message: 'Đang dùng thử.' },
+              version: CNCPlugins::VERSION
+            )
+            html = DashboardHTML.html(state)
+            state[:cabinet_count] == 1 &&
+              state[:board_count] == 15 &&
+              state[:hardware_count] == 9 &&
+              state[:actions][:edit_carcass] &&
+              state[:actions][:phase_five] &&
+              html.include?('Trung tâm nội thất SonVu') &&
+              html.include?('dashboardOpenSheetOptimization') &&
+              html.include?('dashboardOpenMachiningPreview') &&
+              model.entities.length == entity_count
+          end
+          assert('Phase 5B builds validated rule-based machining without changing the model') do
+            entity_count = model.entities.length
+            project = MachiningPreviewDialog.project_for_model(model)
+            preview = MachiningPreviewHTML.html(project)
+            project[:cabinet_count] == 1 &&
+              project[:panel_count] == 15 &&
+              project[:operation_count] == 100 &&
+              project[:ready_operation_count] == 100 &&
+              project[:invalid_operation_count].zero? &&
+              project[:reference_count] == 5 &&
+              project[:operation_types]['dowel'] == 8 &&
+              project[:operation_types]['cam_pocket'] == 8 &&
+              project[:operation_types]['shelf_pin'] == 76 &&
+              project[:operation_types]['back_groove'] == 4 &&
+              preview.scan('class="panel-map"').length == 6 &&
+              preview.include?('Quy tắc gia công và mẫu khoan') &&
+              preview.include?('SonVu Furniture Builder — Bước 5') &&
+              model.entities.length == entity_count
+          end
+          assert('Step 5C builds neutral DXF and CSV documents without changing the model') do
+            entity_count = model.entities.length
+            project = MachiningPreviewDialog.project_for_model(model)
+            package = MachiningExporter.package(project)
+            package[:faces].length == 6 &&
+              package[:faces].all? { |face| face[:content].include?('$INSUNITS') } &&
+              package[:faces].any? { |face| face[:content].include?('DRILL_HINGE_D35_Z12') } &&
+              package[:manifest_content].start_with?(CutListCSVExporter::UTF8_BOM) &&
+              package[:manifest_content].include?('Layer DXF') &&
+              model.entities.length == entity_count
+          end
           assert('Phase 3A reads the selected cabinet without changing it') do
             report = CutList.report_for_model(model)
             report[:scope] == 'Các tủ đang chọn' &&
@@ -167,7 +218,7 @@ module SonVu
             optimization = SheetOptimizer.optimize(report)
             printable = SheetLayoutExporter.report_html(report, optimization)
             placements = SheetLayoutExporter.placement_csv(optimization)
-            printable.include?('SonVu Furniture Builder — Phase 4C') &&
+            printable.include?('SonVu Furniture Builder — Bước 4') &&
               printable.scan('class="sheet-map"').length == optimization[:sheet_count] &&
               placements.start_with?(CutListCSVExporter::UTF8_BOM) &&
               placements.include?('Trạng thái') &&

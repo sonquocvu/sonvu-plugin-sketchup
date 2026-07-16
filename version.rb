@@ -5,6 +5,6 @@
 
 module SonVu
   module CNCPlugins
-    VERSION = '0.12.0'
+    VERSION = '0.16.0'
   end
 end

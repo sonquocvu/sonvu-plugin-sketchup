@@ -63,7 +63,7 @@ module SonVu
 
         module_function
 
-        def show(initial_values: nil, mode: :create, &block)
+        def show(initial_values: nil, mode: :create, initial_section: :carcass, &block)
           initial = Specification.normalize(initial_values || Specification.defaults)
           return show_inputbox(initial, mode, &block) unless html_dialog_supported?
 
@@ -76,7 +76,7 @@ module SonVu
             @dialog = nil
             dialog.close
           end
-          dialog.set_html(DialogHTML.html(initial, mode))
+          dialog.set_html(DialogHTML.html(initial, mode, initial_section))
           dialog.center if dialog.respond_to?(:center)
           dialog.show
           dialog

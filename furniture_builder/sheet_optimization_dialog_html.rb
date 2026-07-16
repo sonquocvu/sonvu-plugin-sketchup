@@ -91,7 +91,7 @@ module SonVu
               </head>
               <body>
                 <main class="shell">
-                  <div class="brand">SonVu Furniture Builder — Phase 4C</div>
+                  <div class="brand">SonVu Furniture Builder — Bước 4</div>
                   <h1>Tối ưu cắt ván</h1>
                   <div class="scope">Phạm vi: #{h(report[:scope])} · #{report[:cabinet_count].to_i} tủ · #{Array(report[:board_rows]).sum { |row| row[:quantity].to_i }} chi tiết ván</div>
                   <form id="optimizationForm">
@@ -111,7 +111,7 @@ module SonVu
                     </section>
                     <div id="error" class="error"></div>
                     #{result_html(result)}
-                    <div class="note">Xuất phương án tạo một báo cáo HTML tự chứa để in/lưu PDF và một bảng CSV tọa độ. Phase 4C chưa tạo đường CNC.</div>
+                    <div class="note">Xuất phương án tạo một báo cáo HTML tự chứa để in/lưu PDF và một bảng CSV tọa độ. Bước này chưa tạo đường CNC.</div>
                     <div class="actions"><button class="secondary" type="button" onclick="window.sketchup.closeSheetOptimization()">Đóng</button><button type="submit">Tính phương án</button><button type="button" #{result ? '' : 'disabled'} onclick="window.sketchup.exportSheetOptimization()">Xuất phương án</button></div>
                   </form>
                 </main>
